@@ -680,26 +680,29 @@ async def cb_connect(call: CallbackQuery) -> None:
         await _connect_agg(call, key, agg)
         return
 
+    # Premium (VPN) key and/or bypass (Обход) key. A user with only bypass GB and
+    # no premium subscription can still connect — we just show the Обход key(s).
     happ = await _happ_key(uid)
-    if not happ:
+    bp = await _bypass_key(uid)
+    if not happ and not bp:
         await _no_access(call)
         return
 
     kb = InlineKeyboardBuilder()
     rows: list[int] = []
 
-    # VPN row: Happ (blue, left) + Incy (green, right, iOS/Android/macOS).
-    _add_connect_button(kb, "Happ VPN", happ, f"addkey:{key}", style="primary")
-    vpn_n = 1
-    if key in _INCY_PLATFORMS:
-        incy_vpn = await _incy_vpn_key(uid)
-        if incy_vpn:
-            _add_connect_button(kb, "Incy VPN", incy_vpn, f"addvincy:{key}", style="success")
-            vpn_n = 2
-    rows.append(vpn_n)
+    # VPN row (only with an active premium sub): Happ (blue) + Incy (green).
+    if happ:
+        _add_connect_button(kb, "Happ VPN", happ, f"addkey:{key}", style="primary")
+        vpn_n = 1
+        if key in _INCY_PLATFORMS:
+            incy_vpn = await _incy_vpn_key(uid)
+            if incy_vpn:
+                _add_connect_button(kb, "Incy VPN", incy_vpn, f"addvincy:{key}", style="success")
+                vpn_n = 2
+        rows.append(vpn_n)
 
     # Обход row (only if the user has bypass): Happ (blue) + Incy (green).
-    bp = await _bypass_key(uid)
     if bp:
         _add_connect_button(kb, "Happ Обход", bp, f"addbp:{key}", style="primary")
         bp_n = 1
@@ -760,8 +763,11 @@ async def cb_manual(call: CallbackQuery) -> None:
         await _manual_agg(call, key, agg)
         return
 
+    # A bypass-only user (GB balance, no premium) can install too — show only the
+    # Обход key(s). A premium user gets the VPN key(s), and both when they have both.
     happ = await _happ_key(uid)
-    if not happ:
+    bp = await _bypass_key(uid)
+    if not happ and not bp:
         await _no_access(call)
         return
 
@@ -771,17 +777,18 @@ async def cb_manual(call: CallbackQuery) -> None:
         "2. Откройте Happ или Incy",
         "3. Нажмите ➕ в правом верхнем углу или «Вставить» (Incy) "
         "и вставьте из буфера (📋)",
-        "\nПовторите для второго ключа.\n",
-        _labeled_key("🔑 <b>VPN ключ Happ</b> (обычные безлимитные сервера):", happ),
+        "\nПовторите для каждого ключа.\n",
     ]
-    bp = await _bypass_key(uid)
+    if happ:
+        parts.append(_labeled_key("🔑 <b>VPN ключ Happ</b> (обычные безлимитные сервера):", happ))
     if bp:
         parts.append(_labeled_key("🔑 <b>Обход ключ Happ</b> (белые списки РФ):", bp))
     # Incy keys — only on platforms with an Incy client (iOS / Android / macOS).
     if key in _INCY_PLATFORMS:
-        iv = await _incy_vpn_key(uid)
-        if iv:
-            parts.append(_labeled_key("💚 <b>VPN ключ Incy</b> (обычные безлимитные сервера):", iv))
+        if happ:
+            iv = await _incy_vpn_key(uid)
+            if iv:
+                parts.append(_labeled_key("💚 <b>VPN ключ Incy</b> (обычные безлимитные сервера):", iv))
         if bp:
             ib = await _incy_bypass_key(uid)
             if ib:
