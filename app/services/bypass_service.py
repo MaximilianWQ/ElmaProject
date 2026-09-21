@@ -64,6 +64,12 @@ def _extract(data: dict | None) -> dict:
     }
 
 
+# How many pre-tag entities one pass may heal. Each costs a lookup plus a
+# PATCH, so while a backlog drains a pass is dearer than the single filtered
+# read it settles at; keep the burst to a few times the old cost, not more.
+TAG_HEAL_PER_PASS = 100
+
+
 def _create_payload(telegram_id: int, limit_bytes: int) -> dict:
     payload = {
         "username": config.build_bypass_username(telegram_id),
@@ -74,6 +80,7 @@ def _create_payload(telegram_id: int, limit_bytes: int) -> dict:
         "hwidDeviceLimit": config.BYPASS_DEVICE_LIMIT,  # 3.x renamed deviceLimit
         "description": _DESCRIPTION,
         "telegramId": telegram_id,
+        "tag": config.BYPASS_TAG,   # lets the monitor filter the shared panel
     }
     if config.REMNAWAVE_BYPASS_SQUAD_UUID:
         payload["activeInternalSquads"] = [config.REMNAWAVE_BYPASS_SQUAD_UUID]
@@ -208,25 +215,54 @@ async def _provision_traffic(telegram_id: int, extra_bytes: int) -> int:
     return int(extra_bytes)
 
 
-async def usage_snapshot() -> dict[str, dict]:
-    """Every bypass entity's traffic in one paginated panel read.
+async def usage_snapshot(expected: list[str] | None = None) -> dict[str, dict]:
+    """Traffic for our bypass entities, read from the panel by tag.
 
-    Returns ``{panel_username: {used, limit, url}}``. The low-traffic monitor
-    needs the whole population each tick; asking per user was one HTTP
-    round-trip per subscriber, which stops fitting in the tick interval long
-    before the panel itself is the bottleneck.
+    Returns ``{panel_username: {used, limit, url}}``. The panel is shared, so
+    asking for everything meant paging through every other service's users too;
+    ``tag`` narrows the read to ours (there is no username filter in the 3.4.3
+    contract, so the prefix check stays as a second line of defence).
+
+    ``expected`` is the set of usernames our own database says should be there.
+    Entities provisioned before the tag existed carry none and are invisible to
+    a tagged read, so each miss is looked up once, measured from that very
+    response — no user skips a tick — and tagged for next time. Healing is
+    capped per pass so a large backlog cannot burst against the panel.
     """
     prefix = config.BYPASS_USERNAME_PREFIX
     snapshot: dict[str, dict] = {}
-    async for page in remnawave.iter_users():
+    async for page in remnawave.iter_users(tag=config.BYPASS_TAG):
         for user in page:
             username = user.get("username") or ""
             if not username.startswith(prefix):
-                continue  # premium entities, other bots sharing the panel
+                continue  # a tag collision with another service on the panel
             e = _extract(user)
             snapshot[username] = {
                 "used": int(e["used"]), "limit": int(e["limit"]), "url": e["url"],
             }
+
+    missing = [u for u in (expected or []) if u not in snapshot]
+    for username in missing[:TAG_HEAL_PER_PASS]:
+        try:
+            found = await remnawave.find_user_by_username(username)
+        except Exception:  # noqa: BLE001 - one bad row must not blind the pass
+            logger.exception("bypass tag heal: lookup failed for %s", username)
+            continue
+        if not found:
+            continue  # deleted from the panel; nothing to measure or tag
+        e = _extract(found)
+        snapshot[username] = {
+            "used": int(e["used"]), "limit": int(e["limit"]), "url": e["url"],
+        }
+        try:
+            await remnawave.update_user(found.get("id"), tag=config.BYPASS_TAG)
+        except Exception:  # noqa: BLE001 - already measured; retried next pass
+            logger.exception("bypass tag heal: tagging %s failed", username)
+    if len(missing) > TAG_HEAL_PER_PASS:
+        logger.info(
+            "bypass tag backfill: %d entities still untagged", 
+            len(missing) - TAG_HEAL_PER_PASS,
+        )
     return snapshot
 
 

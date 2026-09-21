@@ -195,17 +195,22 @@ async def find_user_by_telegram_id(
     return users[0] if users else None
 
 
-async def iter_users(*, size: int = 1000, max_pages: int = 200):
+async def iter_users(*, size: int = 1000, max_pages: int = 200, **filters):
     """Yield pages of panel users via ``GET /api/users/stream``.
 
     3.x keyset pagination: pass back ``nextCursor`` until ``hasMore`` is false.
     ``size`` is capped at 1000 by the contract. Lets a caller read the whole
     population in ``ceil(N/1000)`` requests instead of one request per user;
     ``max_pages`` is a safety stop so a misbehaving cursor can't loop forever.
+
+    ``filters`` are passed straight through as query parameters. The 3.4.3
+    contract accepts status, trafficLimitStrategy, telegramId, email, tag and
+    externalSquadUuid — there is no username filter, so a prefix cannot be
+    pushed down to the panel.
     """
     cursor = None
     for _ in range(max_pages):
-        params: dict = {"size": min(size, 1000)}
+        params: dict = {"size": min(size, 1000), **filters}
         if cursor is not None:
             params["cursor"] = cursor
         res = await _req("GET", "/api/users/stream", params=params) or {}

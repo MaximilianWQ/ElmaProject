@@ -542,10 +542,11 @@ async def _traffic_monitor(bot: Bot) -> None:
     rows = await all_bypass()
     if not rows:
         return
-    # ONE paginated read of the panel covers every subscriber. Asking per user
-    # meant an HTTP round-trip each, so a few thousand users could not be walked
-    # inside TRAFFIC_MONITOR_SECONDS and the passes piled up on the panel.
-    snapshot = await bypass_service.usage_snapshot()
+    # ONE tag-filtered read of the panel covers every subscriber. Asking per
+    # user meant an HTTP round-trip each; asking for the whole shared panel
+    # meant paging through every other service's users as well.
+    expected = [config.build_bypass_username(r["telegram_id"]) for r in rows]
+    snapshot = await bypass_service.usage_snapshot(expected=expected)
     sent = 0
     for row in rows:
         tg = row["telegram_id"]

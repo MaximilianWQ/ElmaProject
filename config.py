@@ -4,6 +4,7 @@ No dictionaries of tariffs / countries / multipliers — this is the *lite*
 build: one product, one server, one payment flow.
 """
 import os
+import re
 import hashlib
 
 
@@ -87,6 +88,16 @@ REMNAWAVE_BYPASS_SQUAD_UUID = _get_str("REMNAWAVE_BYPASS_SQUAD_UUID", "")
 BYPASS_USERNAME_PREFIX = _get_str(
     "BYPASS_USERNAME_PREFIX", f"{REMNAWAVE_USERNAME_PREFIX}bp_"
 )
+# Panel tag stamped on our bypass entities so GET /api/users/stream can be
+# filtered to just ours — the panel is shared, and reading all of it every tick
+# was 88% of our load on it. Panel contract (3.4.3): ^[A-Z0-9_]+$, max 16.
+BYPASS_TAG = _get_str("BYPASS_TAG", "ELMABP")
+if not re.fullmatch(r"[A-Z0-9_]{1,16}", BYPASS_TAG):
+    raise RuntimeError(
+        "BYPASS_TAG must be 1-16 chars of A-Z, 0-9 or _ (panel rule), got "
+        f"{BYPASS_TAG!r}"
+    )
+
 BYPASS_DEVICE_LIMIT = _get_int("BYPASS_DEVICE_LIMIT", DEVICE_LIMIT)
 # Bypass works by GB, not by time — the panel expiry sits far in the future.
 BYPASS_EXPIRE_DAYS = _get_int("BYPASS_EXPIRE_DAYS", 3650)
