@@ -5,3 +5,8 @@ __pycache__/
 .venv/
 venv/
 *.log
+
+# Secrets: .gitignore keeps these out of the repo, this keeps a locally
+# built image from baking them in via `COPY . .`.
+.env
+.env.local
