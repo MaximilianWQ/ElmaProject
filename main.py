@@ -1,6 +1,7 @@
 """Entry point: DB pool + bot + scheduler in a single process."""
 import asyncio
 import logging
+import sys
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
@@ -24,10 +25,30 @@ from database import close_db, init_db
 
 
 def setup_logging() -> None:
-    logging.basicConfig(
-        level=getattr(logging, config.LOG_LEVEL.upper(), logging.INFO),
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-    )
+    """Route routine logs to stdout and problems to stderr.
+
+    ``basicConfig`` writes everything to stderr, so the platform tagged every
+    INFO line — schema ready, each aggregator hit — as an error, and a genuine
+    failure was indistinguishable from normal traffic in the log viewer.
+    """
+    level = getattr(logging, config.LOG_LEVEL.upper(), logging.INFO)
+    fmt = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+
+    out = logging.StreamHandler(sys.stdout)
+    out.setLevel(level)
+    out.addFilter(lambda r: r.levelno < logging.WARNING)
+    out.setFormatter(fmt)
+
+    err = logging.StreamHandler(sys.stderr)
+    err.setLevel(logging.WARNING)
+    err.setFormatter(fmt)
+
+    root = logging.getLogger()
+    root.setLevel(level)
+    for handler in root.handlers[:]:   # idempotent: never double every line
+        root.removeHandler(handler)
+    root.addHandler(out)
+    root.addHandler(err)
 
 
 async def main() -> None:

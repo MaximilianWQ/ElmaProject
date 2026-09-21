@@ -37,6 +37,11 @@ _TIMEOUT = httpx.Timeout(20.0)
 
 _client: httpx.AsyncClient | None = None
 
+# Status path this Platega account actually serves, learned on the first
+# successful lookup. Reset per process, so a provider that later enables
+# the newer API is picked up on the next restart.
+_status_path: str | None = None
+
 
 def _headers() -> dict[str, str]:
     return {
@@ -118,9 +123,15 @@ async def get_status(transaction_id: str) -> str | None:
     (we create via /v2/transaction/process) and fall back to the legacy path —
     a wrong endpoint here would silently break missed-webhook recovery. The
     status may sit at the top level or under ``response``."""
+    global _status_path
     client = _get_client()
-    for path in (f"/v2/transaction/{transaction_id}", f"/transaction/{transaction_id}"):
-        resp = await client.get(path)
+    templates = ("/v2/transaction/{}", "/transaction/{}")
+    if _status_path is not None:
+        # Learned below: the other one 404s on every poll, and reconcile polls
+        # a pending payment once a minute for hours.
+        templates = (_status_path,) + tuple(t for t in templates if t != _status_path)
+    for template in templates:
+        resp = await client.get(template.format(transaction_id))
         if resp.status_code == 404:
             continue
         resp.raise_for_status()
@@ -129,6 +140,7 @@ async def get_status(transaction_id: str) -> str | None:
             data = data["response"]
         status = data.get("status")
         if status is not None:
+            _status_path = template
             return status
     return None
 
