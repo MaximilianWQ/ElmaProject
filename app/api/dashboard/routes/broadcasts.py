@@ -35,6 +35,27 @@ _PRESET_KEYS = (
 _SCOPES = ("all", "1m", "3m", "6m", "12m")
 
 
+def _check_spec_length(spec: dict) -> None:
+    """Both variants, exactly as ``run_broadcast`` checks them before sending."""
+    photo = bool(spec["photo_file_id"])
+    for body in (spec["text"], spec["text_b"]) if spec["is_ab"] else (spec["text"],):
+        check_body_length(body, photo=photo)
+
+
+def check_body_length(text: str, *, photo: bool = False) -> None:
+    """400 if Telegram would reject ``text`` for every recipient.
+
+    The limit has to be enforced where the text is *authored*, not where it is
+    sent: over the cap every single send fails, and `safe_send` swallows the
+    resulting TelegramBadRequest, so the admin gets no signal at all. Shared
+    with the automations routes, which compose the same kind of message.
+    """
+    try:
+        broadcast_runner.check_length(text, photo=photo)
+    except broadcast_runner.BroadcastTooLong as exc:
+        raise web.HTTPBadRequest(reason=str(exc))
+
+
 def _parse_button_specs(raw) -> str | None:
     """Validate incoming button specs into a JSON string for storage. Accepts
     preset keys (strings or {kind}) and discount specs {kind:discount,pct,hours,scope}."""
@@ -135,6 +156,7 @@ async def create(request: web.Request) -> web.Response:
         raise web.HTTPBadRequest(reason="unknown segment")
     if not spec["text"] and not spec["photo_file_id"]:
         raise web.HTTPBadRequest(reason="empty message")
+    _check_spec_length(spec)
 
     admin_id = int(request["admin"]["sub"])
     # Count only: run_broadcast fetches the ids itself, so asking for the whole
@@ -207,6 +229,7 @@ async def scheduled_create(request: web.Request) -> web.Response:
         raise web.HTTPBadRequest(reason="unknown segment")
     if not spec["text"] and not spec["photo_file_id"]:
         raise web.HTTPBadRequest(reason="empty message")
+    _check_spec_length(spec)
 
     kind = str(body.get("kind", ""))
     if kind not in _KINDS:

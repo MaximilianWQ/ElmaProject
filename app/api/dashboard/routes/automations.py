@@ -15,7 +15,7 @@ import database
 from app.services import notifications
 
 from ..util import json_ok, read_json
-from .broadcasts import _parse_button_specs
+from .broadcasts import _parse_button_specs, check_body_length
 
 routes = web.RouteTableDef()
 
@@ -81,6 +81,8 @@ async def set_builtin(request: web.Request) -> web.Response:
     body = await read_json(request)
     enabled = bool(body.get("enabled", True))
     text = str(body.get("text", "")).strip() or None
+    if text:
+        check_body_length(text)
     offset_hours = None
     if reg[key].get("timing") and body.get("offset_hours") not in ("", None):
         try:
@@ -109,6 +111,7 @@ async def create_auto(request: web.Request) -> web.Response:
     text = str(body.get("text", "")).strip()
     if not name or trigger not in _TRIGGERS or not text:
         raise web.HTTPBadRequest(reason="name, trigger_type и text обязательны")
+    check_body_length(text)
     try:
         delay_hours = int(body.get("delay_hours", 0))
     except (TypeError, ValueError):
@@ -134,6 +137,7 @@ async def update_auto(request: web.Request) -> web.Response:
         fields["name"] = str(body["name"]).strip()[:80]
     if "text" in body:
         fields["text"] = str(body["text"]).strip()
+        check_body_length(fields["text"])
     if "delay_hours" in body:
         try:
             d = int(body["delay_hours"])

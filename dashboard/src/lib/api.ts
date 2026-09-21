@@ -12,6 +12,38 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * The human-readable half of a failed response.
+ *
+ * aiohttp puts a raised HTTPBadRequest's message in the status line's reason
+ * phrase *and* in a "400: <reason>" text body. Only the body survives the trip:
+ * HTTP/2 dropped the reason phrase from the protocol, so behind a TLS-
+ * terminating edge the browser reports statusText as the empty string and the
+ * admin sees a blank error. Read the body, and keep statusText as the last
+ * resort for a response that carries no message at all.
+ */
+async function errorDetail(res: Response): Promise<string> {
+  let raw = "";
+  try {
+    raw = (await res.text()).trim();
+  } catch {
+    /* body already consumed or the connection dropped */
+  }
+  if (raw.startsWith("{")) {
+    try {
+      const j = JSON.parse(raw);
+      const d = j && (j.detail || j.error);
+      if (typeof d === "string" && d) return d;
+    } catch {
+      /* not the JSON it looked like */
+    }
+  }
+  // aiohttp's default text body repeats the status code: "400: too long".
+  const stripped = raw.replace(/^\d{3}:\s*/, "");
+  if (stripped && !stripped.startsWith("<")) return stripped;
+  return res.statusText || `Ошибка ${res.status}`;
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const headers: Record<string, string> = {};
   const token = getToken();
@@ -30,14 +62,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     throw new ApiError(401, "Сессия истекла");
   }
   if (!res.ok) {
-    let detail = res.statusText;
-    try {
-      const j = await res.json();
-      detail = (j && (j.detail || j.error)) || detail;
-    } catch {
-      /* non-json error */
-    }
-    throw new ApiError(res.status, detail);
+    throw new ApiError(res.status, await errorDetail(res));
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
