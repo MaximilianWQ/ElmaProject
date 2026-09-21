@@ -60,9 +60,16 @@ def visible_length(body: str) -> int:
 
 
 def check_length(body: str, *, photo: bool) -> None:
-    """Raise :class:`BroadcastTooLong` if ``body`` can't be delivered as-is."""
+    """Raise :class:`BroadcastTooLong` if ``body`` can't be delivered as-is.
+
+    Measured on the *converted* body, because that is what build_sender puts on
+    the wire. The composer accepts premium-emoji markdown — 41 raw characters
+    per ``![🛍](tg://emoji?id=…)`` that Telegram renders as the two the reader
+    sees — and ELMA's copy is full of it, so measuring the raw text refuses
+    captions that would have been delivered fine.
+    """
     limit = CAPTION_LIMIT if photo else TEXT_LIMIT
-    n = visible_length(body)
+    n = visible_length(convert_tg_emoji(body or ""))
     if n > limit:
         kind = "подписи под фото" if photo else "текста"
         raise BroadcastTooLong(
@@ -322,12 +329,17 @@ async def run_broadcast(
         "total": total, "source": source,
     })
 
-    def _progress(base_sent: int):
+    def _progress(base: broadcaster.BroadcastResult | None = None):
+        """Reports for one half of an A/B run must still add up to the whole
+        run — otherwise the second half's first report shows `blocked` falling
+        back to zero while `sent` keeps climbing."""
+        done = base or broadcaster.BroadcastResult()
+
         async def progress(r) -> None:
             bus.publish({
                 "type": "broadcast:progress", "id": bid, "segment": segment,
-                "sent": base_sent + r.sent, "blocked": r.blocked,
-                "failed": r.failed, "total": total,
+                "sent": done.sent + r.sent, "blocked": done.blocked + r.blocked,
+                "failed": done.failed + r.failed, "total": total,
             })
         return progress
 
@@ -336,10 +348,10 @@ async def run_broadcast(
         ids_a = [u for u in user_ids if u % 2 == 0]
         ids_b = [u for u in user_ids if u % 2 == 1]
         ra = await broadcaster.broadcast(
-            ids_a, build_sender(bot, text, photo_file_id, markup), progress=_progress(0)
+            ids_a, build_sender(bot, text, photo_file_id, markup), progress=_progress()
         )
         rb = await broadcaster.broadcast(
-            ids_b, build_sender(bot, text_b, photo_file_id, markup), progress=_progress(ra.sent)
+            ids_b, build_sender(bot, text_b, photo_file_id, markup), progress=_progress(ra)
         )
         sent_a, sent_b = ra.sent, rb.sent
         res = SimpleNamespace(
@@ -348,7 +360,7 @@ async def run_broadcast(
         )
     else:
         send_one = build_sender(bot, text, photo_file_id, markup)
-        res = await broadcaster.broadcast(user_ids, send_one, progress=_progress(0))
+        res = await broadcaster.broadcast(user_ids, send_one, progress=_progress())
 
     await database.finish_broadcast(
         bid, sent=res.sent, blocked=res.blocked, failed=res.failed,

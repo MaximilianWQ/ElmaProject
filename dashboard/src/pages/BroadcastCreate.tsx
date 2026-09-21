@@ -110,8 +110,10 @@ export default function BroadcastCreate() {
     button_text: btnText || undefined,
     button_url: btnUrl || undefined,
     buttons: buttonSpecs(),
-    text_b: abTest && mode === "now" ? textB || undefined : undefined,
-    is_ab: abTest && mode === "now" && !!textB.trim(),
+    // Scheduled runs carry the variant too — the scheduler passes text_b and
+    // is_ab straight through to run_broadcast.
+    text_b: abTest ? textB || undefined : undefined,
+    is_ab: abTest && !!textB.trim(),
   });
 
   const buttonSpecs = (): BroadcastButton[] | undefined => {
@@ -219,19 +221,17 @@ export default function BroadcastCreate() {
           </div>
         </div>
 
-        {mode === "now" && (
-          <div className="space-y-2">
-            <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
-              <input type="checkbox" checked={abTest} onChange={(e) => setAbTest(e.target.checked)} />
-              A/B тест — два варианта текста, поровну по аудитории
-            </label>
-            {abTest && (
-              <textarea className="input min-h-[120px] font-mono text-sm" value={textB}
-                onChange={(e) => setTextB(e.target.value)}
-                placeholder="Вариант B (вариант A — в поле выше)" />
-            )}
-          </div>
-        )}
+        <div className="space-y-2">
+          <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+            <input type="checkbox" checked={abTest} onChange={(e) => setAbTest(e.target.checked)} />
+            A/B тест — два варианта текста, поровну по аудитории
+          </label>
+          {abTest && (
+            <textarea className="input min-h-[120px] font-mono text-sm" value={textB}
+              onChange={(e) => setTextB(e.target.value)}
+              placeholder="Вариант B (вариант A — в поле выше)" />
+          )}
+        </div>
 
         <div>
           <label className="label mb-1 block">Готовые кнопки</label>

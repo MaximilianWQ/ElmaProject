@@ -8,9 +8,13 @@ it starts returning 429 / ``RetryAfter``. We pace strictly below that
 so the bot keeps handling webhooks and scheduler loops while it runs.
 
 Failure handling per recipient:
-  * ``RetryAfter``        -> globally back off for the requested seconds, retry once
-  * ``Forbidden``         -> user blocked the bot: mark unreachable, count separately
-  * anything else         -> log + count as failed (one bad user never aborts the run)
+  * ``RetryAfter``  -> back the whole run off for the requested seconds and try
+                       this recipient again, up to ``RETRY_ATTEMPTS`` times;
+                       429 is throttling, not a delivery failure
+  * ``Forbidden``   -> user blocked the bot: mark unreachable, count separately
+  * anything else   -> log + count as failed (one bad user never aborts the run)
+
+Every recipient ends in exactly one bucket: sent + blocked + failed == total.
 """
 import asyncio
 import logging
