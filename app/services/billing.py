@@ -231,7 +231,7 @@ async def _reward_referrer(bot: Bot, buyer_id: int) -> None:
         # user would start the paid renewal reminders for someone who never
         # paid and drop them out of the trial funnel.
         source = (ref_sub["source"] if ref_sub and ref_sub["source"] else "referral")
-        sub = await subscription_service.create_or_renew(
+        await subscription_service.create_or_renew(
             referrer_id, new_expires, source=source
         )
         enabled, tmpl = await auto_msg.resolve("referral_bonus", _DEF_REFERRAL_BONUS)

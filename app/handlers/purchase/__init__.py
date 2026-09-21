@@ -339,7 +339,7 @@ async def on_paid(message: Message) -> None:
     # Provision first; mark paid only on success — refund on failure so the rule
     # "paid -> served OR refunded" always holds.
     try:
-        sub = await billing.complete_purchase(
+        await billing.complete_purchase(
             message.bot,
             user_id,
             tariff,

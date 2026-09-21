@@ -1,7 +1,6 @@
 """fetch() self-healing UA negotiation: it must skip UAs the panel answers with
 a JSON template and settle on the one that yields a base64 uri-list, remembering
 it so the steady state is a single upstream request."""
-import base64
 
 import pytest
 
@@ -101,7 +100,10 @@ async def test_fetch_raises_when_all_uas_error(monkeypatch):
 
     monkeypatch.setattr(agg, "_get_client", lambda: _Client())
     monkeypatch.setattr(agg.config, "SUBSCRIPTION_UPSTREAM_UAS", ["a", "b"])
-    with pytest.raises(Exception):
+    # fetch re-raises the upstream failure itself (see aggregator.fetch:
+    # `raise last_exc or RuntimeError(...)`), which is what lets serve() tell a
+    # panel outage apart from a panel that answered with junk.
+    with pytest.raises(httpx.ConnectError):
         await agg.fetch("http://panel/sub/x")
 
 

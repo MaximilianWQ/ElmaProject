@@ -17,6 +17,7 @@ import config
 import database
 from app.events import bus
 from app.services import bypass_service
+from app.utils.tasks import spawn
 
 from ..util import json_ok, read_json
 
@@ -92,5 +93,5 @@ async def backfill(request: web.Request) -> web.Response:
         finally:
             _running = False
 
-    asyncio.create_task(run())
+    spawn(run(), name=f"bypass-backfill-{gb}gb")
     return json_ok({"ok": True, "total": total, "gb": gb}, status=202)

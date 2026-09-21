@@ -1,7 +1,6 @@
 """subscription_service.resolve_live_url: premium subscription URL is read live
 from the panel and synced to the DB when it changes, mirroring how bypass
 self-syncs — so a panel-side link change is picked up on the next request."""
-import pytest
 
 from app.services import subscription_service as svc
 

@@ -3,7 +3,6 @@ singleflight de-dup, the stale-copy fallback, negative caching, LRU bounds,
 metrics, cache invalidation, the diagnostic probe, and the merge helpers."""
 import asyncio
 import base64
-import time
 
 import pytest
 
@@ -89,7 +88,7 @@ async def test_refetch_after_fresh_window(fast_ttl):
 
     b1, _, s1 = await agg.serve("tok_fresh", builder)
     assert (b1, s1) == (b"v1", "miss")
-    time.sleep(fast_ttl + 0.02)
+    await asyncio.sleep(fast_ttl + 0.02)
     b2, _, s2 = await agg.serve("tok_fresh", builder)
     assert (b2, s2) == (b"v2", "miss"), "past the window a refresh must rebuild live"
     assert calls["n"] == 2
@@ -106,7 +105,7 @@ async def test_stale_served_when_upstream_fails(fast_ttl):
         return b"GOOD", {"h": "v"}
 
     await agg.serve("tok_stale", builder)          # cache a good copy
-    time.sleep(fast_ttl + 0.02)                     # let it go non-fresh
+    await asyncio.sleep(fast_ttl + 0.02)                     # let it go non-fresh
     state["fail"] = True
     body, headers, cache_state = await agg.serve("tok_stale", builder)
     assert cache_state == "stale" and body == b"GOOD" and headers == {"h": "v"}

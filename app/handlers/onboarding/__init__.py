@@ -43,7 +43,6 @@ from config import (
     APP_INCY_IOS_URL,
     APP_IOS_INTL_URL,
     APP_IOS_RU_URL,
-    APP_MACOS_URL,
     APP_WINDOWS_URL,
     BYPASS_ENABLED,
     CONNECT_PAGE_URL,

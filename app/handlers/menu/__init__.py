@@ -3,7 +3,6 @@
 Static, navigation-heavy screens. Copy follows the approved ELMA spec verbatim;
 tone is warm, on "ты", short.
 """
-import html
 import logging
 
 from aiogram import F, Router

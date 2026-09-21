@@ -14,7 +14,6 @@ import asyncio
 import base64
 import time
 
-import pytest
 
 from app.services import aggregator as agg
 
