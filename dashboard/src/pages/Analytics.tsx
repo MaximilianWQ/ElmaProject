@@ -114,7 +114,7 @@ export default function Analytics() {
       {/* Hourly chart */}
       <div className="card card-pad">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2"><Clock className="h-4 w-4 text-fg-subtle" /><h2 className="font-semibold">По часам · МСК</h2></div>
+          <div className="flex items-center gap-2"><Clock className="h-4 w-4 text-fg-subtle" /><h2 className="font-semibold">По часам, МСК</h2></div>
           <div className="flex flex-wrap items-center gap-2">
             <SegPill options={["new_users", "payments", "revenue"] as MetricKey[]} value={hourMetric} onChange={setHourMetric}
               render={(k) => METRICS.find((m) => m.key === k)!.label} />

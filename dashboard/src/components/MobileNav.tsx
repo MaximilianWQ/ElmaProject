@@ -51,7 +51,7 @@ export function MobileNav() {
               cn(
                 "flex flex-1 flex-col items-center gap-0.5 rounded-xl px-2 py-1.5 text-[10px] font-medium transition-all duration-200",
                 isActive
-                  ? "bg-accent text-bg font-semibold shadow-glow-sm"
+                  ? "bg-accent text-white font-semibold"
                   : "text-fg-subtle hover:text-fg",
               )
             }
@@ -66,7 +66,7 @@ export function MobileNav() {
           className={cn(
             "flex flex-1 flex-col items-center gap-0.5 rounded-xl px-2 py-1.5 text-[10px] font-medium transition-all duration-200",
             inMore
-              ? "bg-accent text-bg font-semibold shadow-glow-sm"
+              ? "bg-accent text-white font-semibold"
               : "text-fg-subtle hover:text-fg",
           )}
         >
@@ -88,9 +88,6 @@ export function MobileNav() {
             <div className="mx-auto mt-2 h-1 w-10 rounded-full bg-border" />
             <div className="flex items-center justify-between px-5 pb-2 pt-3">
               <div>
-                <div className="text-[10px] font-medium uppercase tracking-[0.15em] text-fg-subtle">
-                  Меню
-                </div>
                 <h3 className="text-base font-semibold text-fg">Все разделы</h3>
               </div>
               <button
@@ -128,7 +125,7 @@ export function MobileNav() {
               <button
                 type="button"
                 onClick={logout}
-                className="flex w-full items-center justify-center gap-2 rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm font-medium text-danger transition-colors hover:bg-danger/15"
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm font-medium text-danger transition-colors hover:bg-danger/20"
               >
                 <LogOut className="h-4 w-4" />
                 Выйти

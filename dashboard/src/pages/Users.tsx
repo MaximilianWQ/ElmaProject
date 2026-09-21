@@ -149,7 +149,7 @@ function UserDrawer({ tg, onClose }: { tg: number; onClose: () => void }) {
         {/* header */}
         <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-border-subtle bg-bg-card/95 px-5 py-4 backdrop-blur">
           <div className="flex items-center gap-3">
-            <div className="grid h-11 w-11 place-items-center rounded-full bg-gradient-to-br from-accent/15 to-secondary/15 text-sm font-bold text-accent">
+            <div className="grid h-11 w-11 place-items-center rounded-full bg-gradient-to-br from-accent/20 to-secondary/20 text-sm font-bold text-accent">
               {(String(u.username ?? "#")[0] ?? "#").toUpperCase()}
             </div>
             <div>

@@ -12,7 +12,6 @@ POST /broadcasts/scheduled/{id}/cancel   delete
 
 All times are Moscow (MSK, UTC+3); stored UTC. See broadcast_runner.
 """
-import asyncio
 import json
 import logging
 
@@ -21,6 +20,7 @@ from aiohttp import web
 import config
 import database
 from app.services import broadcast_runner
+from app.utils.tasks import spawn
 
 from ..util import int_query, json_ok, read_json
 
@@ -137,9 +137,12 @@ async def create(request: web.Request) -> web.Response:
         raise web.HTTPBadRequest(reason="empty message")
 
     admin_id = int(request["admin"]["sub"])
-    total = len(await database.recipients(spec["segment"]))
-    asyncio.create_task(
-        broadcast_runner.run_broadcast(bot, admin_id=admin_id, source="manual", **spec)
+    # Count only: run_broadcast fetches the ids itself, so asking for the whole
+    # recipient list here scanned `users` twice on every send.
+    total = await database.segment_count(spec["segment"])
+    spawn(
+        broadcast_runner.run_broadcast(bot, admin_id=admin_id, source="manual", **spec),
+        name=f"broadcast-{spec['segment']}",
     )
     return json_ok({"ok": True, "segment": spec["segment"], "total": total}, status=202)
 
@@ -178,13 +181,13 @@ async def resend(request: web.Request) -> web.Response:
         raise web.HTTPBadRequest(reason="сегмент больше не существует")
 
     admin_id = int(request["admin"]["sub"])
-    total = len(await database.recipients(row["segment"]))
-    asyncio.create_task(broadcast_runner.run_broadcast(
+    total = await database.segment_count(row["segment"])
+    spawn(broadcast_runner.run_broadcast(
         bot, admin_id=admin_id, source="resend", segment=row["segment"],
         text=row["text"], photo_file_id=row["photo_file_id"],
         button_text=row["button_text"], button_url=row["button_url"],
         buttons=row["buttons"], text_b=row["text_b"], is_ab=row["is_ab"],
-    ))
+    ), name=f"broadcast-resend-{bid}")
     return json_ok({"ok": True, "segment": row["segment"], "total": total}, status=202)
 
 
@@ -230,7 +233,7 @@ async def scheduled_create(request: web.Request) -> web.Response:
         photo_file_id=spec["photo_file_id"], button_text=spec["button_text"],
         button_url=spec["button_url"], kind=kind, run_at=run_at,
         time_msk=time_msk if kind != "once" else None, weekdays=weekdays,
-        buttons=spec["buttons"],
+        buttons=spec["buttons"], text_b=spec["text_b"], is_ab=spec["is_ab"],
     )
     await database.log_audit(
         admin_id, "broadcast_schedule", None, f"{kind} {spec['segment']}"

@@ -29,9 +29,7 @@ export function LivePaymentTicker() {
     <div className="card relative overflow-hidden">
       <div className="flex items-center gap-2 border-b border-border-subtle px-4 py-2.5">
         <CreditCard className="h-4 w-4 text-success" />
-        <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-fg-subtle">
-          Последние оплаты
-        </span>
+        <span className="text-[13px] font-medium text-fg-muted">Последние оплаты</span>
         <span className="pulse-live ml-auto" />
       </div>
       <div className="group relative py-2.5">

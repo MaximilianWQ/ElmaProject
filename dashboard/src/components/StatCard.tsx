@@ -15,11 +15,11 @@ interface Props {
 
 const TONES: Record<NonNullable<Props["tone"]>, string> = {
   default: "from-bg-elevated to-bg-card",
-  accent: "from-accent/12 to-bg-card",
-  success: "from-success/12 to-bg-card",
-  warning: "from-warning/12 to-bg-card",
-  danger: "from-danger/12 to-bg-card",
-  info: "from-info/12 to-bg-card",
+  accent: "from-accent/10 to-bg-card",
+  success: "from-success/10 to-bg-card",
+  warning: "from-warning/10 to-bg-card",
+  danger: "from-danger/10 to-bg-card",
+  info: "from-info/10 to-bg-card",
 };
 
 const ICON_TONES: Record<NonNullable<Props["tone"]>, string> = {
@@ -50,7 +50,7 @@ export function StatCard({
       />
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-fg-subtle">
+          <div className="text-[13px] font-medium text-fg-muted">
             {label}
           </div>
           <div className="mt-2 flex min-w-0 items-baseline gap-2">

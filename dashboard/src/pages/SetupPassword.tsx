@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { ShieldCheck } from "lucide-react";
+import {  } from "lucide-react";
 import { endpoints, ApiError } from "@/lib/api";
 import { setToken } from "@/lib/auth";
 import { Spinner } from "@/components/Spinner";
+import { ElmaMark } from "@/components/ElmaMark";
 
 export default function SetupPassword({ onDone }: { onDone: () => void }) {
   const [params] = useSearchParams();
@@ -47,9 +48,7 @@ export default function SetupPassword({ onDone }: { onDone: () => void }) {
 
       <div className="relative w-full max-w-sm rounded-2xl border border-white/50 bg-white/80 p-7 shadow-soft backdrop-blur-2xl animate-fade-up">
         <div className="mb-6 flex flex-col items-center text-center">
-          <div className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-accent to-secondary text-white shadow-cta">
-            <ShieldCheck className="h-6 w-6" />
-          </div>
+          <ElmaMark className="h-12 w-12" />
           <h1 className="mt-3 text-xl font-bold tracking-tight">Новый пароль</h1>
           <p className="mt-1 text-sm text-fg-muted">Задайте пароль для входа в дашборд</p>
         </div>

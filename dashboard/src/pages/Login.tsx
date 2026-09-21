@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Fingerprint, Zap } from "lucide-react";
+import { Fingerprint,  } from "lucide-react";
 import { endpoints, ApiError } from "@/lib/api";
 import { setToken } from "@/lib/auth";
 import { loginPasskey } from "@/lib/passkey";
 import { Spinner } from "@/components/Spinner";
+import { ElmaMark } from "@/components/ElmaMark";
 
 export default function Login({ onDone }: { onDone: () => void }) {
   const [password, setPassword] = useState("");
@@ -56,12 +57,7 @@ export default function Login({ onDone }: { onDone: () => void }) {
         <div className="absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-accent/60 to-transparent" />
 
         <div className="mb-6 flex flex-col items-center text-center">
-          <div className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-accent to-secondary text-white shadow-cta">
-            <Zap className="h-6 w-6" />
-          </div>
-          <div className="mt-3 text-[11px] font-semibold uppercase tracking-[3px] text-fg-subtle">
-            ELMA Admin
-          </div>
+          <ElmaMark className="h-12 w-12" />
           <h1 className="mt-1 text-xl font-bold tracking-tight">Вход в консоль</h1>
         </div>
 
@@ -96,7 +92,7 @@ export default function Login({ onDone }: { onDone: () => void }) {
 
         {passkey.data?.enabled && (
           <>
-            <div className="my-4 flex items-center gap-3 text-[11px] uppercase tracking-wide text-fg-subtle">
+            <div className="my-4 flex items-center gap-3 text-xs text-fg-subtle">
               <span className="h-px flex-1 bg-border" /> или <span className="h-px flex-1 bg-border" />
             </div>
             <button type="button" onClick={passkeyLogin} disabled={busy} className="btn-secondary w-full">
