@@ -11,6 +11,7 @@ import { ConfirmButton } from "@/components/ConfirmButton";
 import { cn } from "@/lib/cn";
 import { toast } from "@/store/toast";
 import { PageHeader } from "@/components/StatCard";
+import { ErrorNote } from "@/components/ErrorNote";
 
 const TRIGGERS = [
   { key: "after_signup", label: "После регистрации", verb: "через" },
@@ -128,6 +129,16 @@ function BuiltinTab() {
   const list = useQuery({ queryKey: ["automations", "builtin"], queryFn: endpoints.automationsBuiltin });
   const refresh = () => qc.invalidateQueries({ queryKey: ["automations", "builtin"] });
   if (list.isLoading) return <PageLoader />;
+  if (list.isError) {
+    return (
+      <ErrorNote
+        what="автосообщения"
+        error={list.error}
+        onRetry={() => list.refetch()}
+        retrying={list.isFetching}
+      />
+    );
+  }
   return (
     <div className="space-y-3">
       {(list.data ?? []).map((a) => <BuiltinRow key={a.key} a={a} onSaved={refresh} />)}

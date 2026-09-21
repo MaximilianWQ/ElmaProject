@@ -12,6 +12,7 @@ import { PageLoader, Spinner } from "@/components/Spinner";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { PageHeader } from "@/components/StatCard";
 import { toast } from "@/store/toast";
+import { ErrorNote } from "@/components/ErrorNote";
 
 /**
  * What the service *is*. Anything that runs an operation against live data
@@ -40,7 +41,22 @@ export default function Settings() {
     onError: () => toast.error("Не удалось удалить"),
   });
 
-  if (s.isLoading || !s.data) return <PageLoader />;
+  if (s.isLoading) return <PageLoader />;
+  // Without this branch a failed request left the page on its spinner for ever:
+  // isLoading is already false, data is still undefined.
+  if (!s.data) {
+    return (
+      <div className="max-w-2xl space-y-5">
+        <PageHeader title="Настройки" />
+        <ErrorNote
+          what="настройки"
+          error={s.error}
+          onRetry={() => s.refetch()}
+          retrying={s.isFetching}
+        />
+      </div>
+    );
+  }
   const d = s.data;
 
   return (

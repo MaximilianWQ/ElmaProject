@@ -9,6 +9,7 @@ import { endpoints, type DailyPoint } from "@/lib/api";
 import { fmtRub, fmtNum, fmtCompactInt, fmtPct, dayLabel } from "@/lib/format";
 import { StatCard, PageHeader } from "@/components/StatCard";
 import { cn } from "@/lib/cn";
+import { ErrorNote } from "@/components/ErrorNote";
 
 const DAY_OPTIONS = [7, 30, 90, 180] as const;
 const HOUR_DAY_OPTIONS = [1, 7, 30] as const;
@@ -72,6 +73,15 @@ export default function Analytics() {
         title="Аналитика ELMA"
         subtitle="Динамика по дням и часам, провайдеры и разбивка по тарифам."
       />
+
+      {daily.isError && (
+        <ErrorNote
+          what="аналитику"
+          error={daily.error}
+          onRetry={() => daily.refetch()}
+          retrying={daily.isFetching}
+        />
+      )}
 
       {/* Range totals */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">

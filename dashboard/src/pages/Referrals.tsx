@@ -7,6 +7,7 @@ import { PageLoader } from "@/components/Spinner";
 import { EmptyState } from "@/components/EmptyState";
 import { StatCard, PageHeader } from "@/components/StatCard";
 import { Pagination } from "./Users";
+import { ErrorNote } from "@/components/ErrorNote";
 
 export default function Referrals() {
   const [page, setPage] = useState(1);
@@ -17,6 +18,15 @@ export default function Referrals() {
   return (
     <div className="stagger-children space-y-5">
       <PageHeader title="Рефералы" subtitle="Кто приглашает и сколько из приглашённых платит." />
+
+      {overall.isError && (
+        <ErrorNote
+          what="реферальную статистику"
+          error={overall.error}
+          onRetry={() => overall.refetch()}
+          retrying={overall.isFetching}
+        />
+      )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatCard label="Всего приглашений" value={fmtNum(overall.data?.total)} loading={overall.isLoading} />

@@ -11,6 +11,7 @@ import { endpoints, type DailyPoint } from "@/lib/api";
 import { dayLabel, fmtCompactInt, fmtNum, fmtRub } from "@/lib/format";
 import { useEventStream } from "@/lib/ws";
 import { StatCard } from "@/components/StatCard";
+import { ErrorNote, NO_VALUE } from "@/components/ErrorNote";
 import { LivePaymentTicker } from "@/components/LivePaymentTicker";
 import { AnimatedNum } from "@/components/AnimatedNum";
 import { cn } from "@/lib/cn";
@@ -56,13 +57,19 @@ function SegPill<T extends string | number>({
 }
 
 function Figure({
-  term, value, loading,
-}: { term: string; value: string; loading?: boolean }) {
+  term, value, loading, error,
+}: { term: string; value: string; loading?: boolean; error?: boolean }) {
   return (
     <div className="border-border-subtle py-3 pr-4 sm:border-l sm:pl-4 sm:first:border-l-0 sm:first:pl-0">
       <dt className="text-[13px] text-fg-subtle">{term}</dt>
       <dd className="mt-1 text-xl font-semibold text-fg">
-        {loading ? <span className="skeleton block h-6 w-20" /> : value}
+        {loading ? (
+          <span className="skeleton block h-6 w-20" />
+        ) : error ? (
+          <span className="text-fg-subtle">{NO_VALUE}</span>
+        ) : (
+          value
+        )}
       </dd>
     </div>
   );
@@ -106,6 +113,15 @@ export default function Dashboard() {
 
   return (
     <div className="stagger-children space-y-6">
+      {ov.isError && (
+        <ErrorNote
+          what="статистику"
+          error={ov.error}
+          onRetry={() => ov.refetch()}
+          retrying={ov.isFetching}
+        />
+      )}
+
       {/* The question this screen answers before any other: идут ли деньги.
           The figure, the trend under it and the supporting numbers are one
           sentence, so they are set as one block rather than four tiles. */}
@@ -117,6 +133,8 @@ export default function Dashboard() {
             <div className="stat-hero mt-1 text-success">
               {ov.isLoading ? (
                 <span className="skeleton block h-[0.9em] w-64" />
+              ) : ov.isError ? (
+                <span className="text-fg-subtle">{NO_VALUE}</span>
               ) : (
                 <AnimatedNum value={u?.revenue_today ?? 0} fmt={fmtRub} />
               )}
@@ -147,10 +165,10 @@ export default function Dashboard() {
         </div>
 
         <dl className="mt-1 grid grid-cols-2 border-y border-border-subtle sm:grid-cols-4">
-          <Figure term={`За ${days} дней`} value={fmtRub(revWindow)} loading={daily.isLoading} />
-          <Figure term="Активные подписки" value={fmtNum(h?.active_total)} loading={ov.isLoading} />
-          <Figure term="Платящие" value={fmtNum(u?.buyers)} loading={ov.isLoading} />
-          <Figure term="Пользователи" value={fmtNum(u?.users_total)} loading={ov.isLoading} />
+          <Figure term={`За ${days} дней`} value={fmtRub(revWindow)} loading={daily.isLoading} error={daily.isError} />
+          <Figure term="Активные подписки" value={fmtNum(h?.active_total)} loading={ov.isLoading} error={ov.isError} />
+          <Figure term="Платящие" value={fmtNum(u?.buyers)} loading={ov.isLoading} error={ov.isError} />
+          <Figure term="Пользователи" value={fmtNum(u?.users_total)} loading={ov.isLoading} error={ov.isError} />
         </dl>
       </header>
 
@@ -251,11 +269,12 @@ export default function Dashboard() {
       <div>
         <h2 className="mb-3 font-semibold">Здоровье подписок</h2>
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          <StatCard label="Активные" value={fmtNum(h?.active_total)} loading={ov.isLoading} />
-          <StatCard label="Платные активные" value={fmtNum(h?.active_paid)} tone="success" loading={ov.isLoading} />
-          <StatCard label="Триалы активные" value={fmtNum(h?.active_trial)} tone="info" loading={ov.isLoading} />
+          <StatCard label="Активные" value={fmtNum(h?.active_total)} loading={ov.isLoading} error={ov.isError} />
+          <StatCard label="Платные активные" value={fmtNum(h?.active_paid)} tone="success" loading={ov.isLoading} error={ov.isError} />
+          <StatCard label="Триалы активные" value={fmtNum(h?.active_trial)} tone="info" loading={ov.isLoading} error={ov.isError} />
           <StatCard
-            label="Конверсия в покупку" value={conv.toFixed(1) + "%"} loading={ov.isLoading}
+            label="Конверсия в покупку" value={conv.toFixed(1) + "%"}
+            loading={ov.isLoading} error={ov.isError}
             hint={`${fmtNum(u?.buyers)} из ${fmtNum(u?.users_total)}`}
           />
         </div>

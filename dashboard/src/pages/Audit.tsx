@@ -7,6 +7,7 @@ import { PageLoader } from "@/components/Spinner";
 import { EmptyState } from "@/components/EmptyState";
 import { Pagination } from "./Users";
 import { PageHeader } from "@/components/StatCard";
+import { ErrorNote } from "@/components/ErrorNote";
 
 const ACTION: Record<string, string> = {
   grant: "badge-success", revoke: "badge-danger", broadcast: "badge-accent",
@@ -21,6 +22,15 @@ export default function Audit() {
   return (
     <div className="stagger-children space-y-5">
       <PageHeader title="Аудит" subtitle="Все действия админов в консоли." />
+
+      {list.isError && (
+        <ErrorNote
+          what="журнал действий"
+          error={list.error}
+          onRetry={() => list.refetch()}
+          retrying={list.isFetching}
+        />
+      )}
 
       <div className="card overflow-hidden">
         {list.isLoading ? <PageLoader /> :

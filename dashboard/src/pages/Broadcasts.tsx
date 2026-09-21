@@ -13,6 +13,7 @@ import { ConfirmButton } from "@/components/ConfirmButton";
 import { cn } from "@/lib/cn";
 import { toast } from "@/store/toast";
 import { PageHeader } from "@/components/StatCard";
+import { ErrorNote } from "@/components/ErrorNote";
 
 const GROUPS = ["База", "Онбординг", "Триал-воронка", "Продление", "Возврат", "Апселл", "Источник"] as const;
 function groupOf(key: string): (typeof GROUPS)[number] {
@@ -59,6 +60,7 @@ export default function Broadcasts() {
           </Link>
         }
       />
+
 
       {events.length > 0 && (
         <div className="card card-pad">
@@ -107,6 +109,11 @@ function SegmentsTab() {
   if (segs.isLoading) return <PageLoader />;
   return (
     <div className="space-y-5">
+
+      {segs.isError && (
+        <ErrorNote what="сегменты" error={segs.error}
+          onRetry={() => segs.refetch()} retrying={segs.isFetching} />
+      )}
       {GROUPS.filter((g) => grouped[g]?.length).map((g) => (
         <div key={g}>
           <div className="label mb-2 px-1">{g}</div>
@@ -143,6 +150,11 @@ function HistoryTab() {
 
   return (
     <div className="card divide-y divide-border-subtle overflow-hidden">
+
+      {hist.isError && (
+        <ErrorNote what="историю рассылок" error={hist.error}
+          onRetry={() => hist.refetch()} retrying={hist.isFetching} />
+      )}
       {rows.map((b: BroadcastHistoryRow) => (
         <div key={b.id} className="flex flex-wrap items-center gap-3 px-4 py-3 text-sm">
           <div className="min-w-0 flex-1">
@@ -194,6 +206,11 @@ function ScheduledTab() {
 
   return (
     <div className="space-y-4">
+
+      {list.isError && (
+        <ErrorNote what="расписание" error={list.error}
+          onRetry={() => list.refetch()} retrying={list.isFetching} />
+      )}
       <Link to="/broadcasts/new?schedule=1" className="btn-primary inline-flex"><Clock className="h-4 w-4" /> Запланировать рассылку</Link>
       {!rows.length ? (
         <div className="card card-pad text-sm text-fg-muted">Запланированных рассылок нет.</div>

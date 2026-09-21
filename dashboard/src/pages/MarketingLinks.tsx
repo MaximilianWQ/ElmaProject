@@ -9,6 +9,7 @@ import { ConfirmButton } from "@/components/ConfirmButton";
 import { cn } from "@/lib/cn";
 import { toast } from "@/store/toast";
 import { PageHeader } from "@/components/StatCard";
+import { ErrorNote } from "@/components/ErrorNote";
 
 export default function MarketingLinks() {
   const qc = useQueryClient();
@@ -50,6 +51,15 @@ export default function MarketingLinks() {
           ) : undefined
         }
       />
+
+      {list.isError && (
+        <ErrorNote
+          what="ссылки"
+          error={list.error}
+          onRetry={() => list.refetch()}
+          retrying={list.isFetching}
+        />
+      )}
 
       <div className="card card-pad">
         <div className="label mb-2">Новая ссылка</div>

@@ -1,5 +1,6 @@
 import { type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { NO_VALUE } from "./ErrorNote";
 
 interface Props {
   label: string;
@@ -11,6 +12,8 @@ interface Props {
   icon?: LucideIcon;
   tone?: "default" | "success" | "warning" | "danger" | "accent" | "info";
   loading?: boolean;
+  /** Source failed: show a dash, never a fabricated zero. */
+  error?: boolean;
 }
 
 const TONES: Record<NonNullable<Props["tone"]>, string> = {
@@ -39,6 +42,7 @@ export function StatCard({
   icon: Icon,
   tone = "default",
   loading,
+  error,
 }: Props) {
   return (
     <div className="card card-hover relative overflow-hidden p-5 animate-fade-in">
@@ -56,12 +60,16 @@ export function StatCard({
           <div className="mt-2 flex min-w-0 items-baseline gap-2">
             {loading ? (
               <span className="skeleton inline-block h-8 w-28 rounded-md" />
+            ) : error ? (
+              <span className="stat-num block text-fg-subtle">{NO_VALUE}</span>
             ) : (
               <span className="stat-num block min-w-0 truncate">{value}</span>
             )}
-            {pill && !loading && <span className="stat-pill shrink-0">{pill}</span>}
+            {pill && !loading && !error && <span className="stat-pill shrink-0">{pill}</span>}
           </div>
-          {hint && <div className="mt-1 truncate text-xs text-fg-muted">{hint}</div>}
+          {hint && !error && (
+            <div className="mt-1 truncate text-xs text-fg-muted">{hint}</div>
+          )}
         </div>
         {Icon && (
           <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-bg-elevated/80 ring-1 ring-border">

@@ -8,6 +8,7 @@ import { Spinner } from "@/components/Spinner";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { PageHeader, StatCard } from "@/components/StatCard";
 import { toast } from "@/store/toast";
+import { ErrorNote } from "@/components/ErrorNote";
 
 /**
  * Operations, kept apart from Settings: Settings is what the service *is*
@@ -29,6 +30,15 @@ export default function Service() {
         title="Сервис"
         subtitle="Операции над боевыми данными: сверка с панелью и миграция обхода."
       />
+
+      {s.isError && (
+        <ErrorNote
+          what="состояние сервиса"
+          error={s.error}
+          onRetry={() => s.refetch()}
+          retrying={s.isFetching}
+        />
+      )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatCard

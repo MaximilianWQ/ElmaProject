@@ -9,6 +9,7 @@ import { ConfirmButton } from "@/components/ConfirmButton";
 import { cn } from "@/lib/cn";
 import { toast } from "@/store/toast";
 import { PageHeader } from "@/components/StatCard";
+import { ErrorNote } from "@/components/ErrorNote";
 
 function rewardText(p: PromoRow): string {
   return p.kind === "days"
@@ -43,6 +44,15 @@ export default function PromoCodes() {
           ) : undefined
         }
       />
+
+      {list.isError && (
+        <ErrorNote
+          what="промокоды"
+          error={list.error}
+          onRetry={() => list.refetch()}
+          retrying={list.isFetching}
+        />
+      )}
 
       <CreateForm onCreated={refresh} />
 

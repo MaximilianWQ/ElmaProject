@@ -7,6 +7,7 @@ import { PageLoader } from "@/components/Spinner";
 import { EmptyState } from "@/components/EmptyState";
 import { Pagination } from "./Users";
 import { PageHeader } from "@/components/StatCard";
+import { ErrorNote } from "@/components/ErrorNote";
 
 export default function Gifts() {
   const [page, setPage] = useState(1);
@@ -24,6 +25,15 @@ export default function Gifts() {
           ) : undefined
         }
       />
+
+      {list.isError && (
+        <ErrorNote
+          what="список гифтов"
+          error={list.error}
+          onRetry={() => list.refetch()}
+          retrying={list.isFetching}
+        />
+      )}
 
       <div className="card overflow-hidden">
         {list.isLoading ? <PageLoader /> :

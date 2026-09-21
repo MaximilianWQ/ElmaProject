@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { toast } from "@/store/toast";
 import { PageHeader } from "@/components/StatCard";
+import { ErrorNote } from "@/components/ErrorNote";
 
 const PAY_STATUS: Record<string, string> = {
   paid: "badge-success", failed: "badge-danger", pending: "badge-warning", refunded: "badge-muted",
@@ -46,6 +47,15 @@ export default function Users() {
           ) : undefined
         }
       />
+
+      {list.isError && (
+        <ErrorNote
+          what="список пользователей"
+          error={list.error}
+          onRetry={() => list.refetch()}
+          retrying={list.isFetching}
+        />
+      )}
 
       <div className="relative">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-subtle" />
