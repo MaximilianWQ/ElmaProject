@@ -97,6 +97,45 @@ async def _req(method: str, path: str, **kwargs) -> dict | None:
     raise last_exc
 
 
+# Panel error code for "this username is taken" (ERRORS.USER_USERNAME_ALREADY_EXISTS
+# in the 3.x source). It is returned with **HTTP 400**, not 409 — the whole point
+# of the helper below.
+USERNAME_CONFLICT_CODE = "A019"
+_USERNAME_TAKEN = "username already exists"
+
+
+def is_username_conflict(exc: httpx.HTTPStatusError) -> bool:
+    """True when the panel refused a create because the username is taken.
+
+    3.x answers a duplicate username with ``400`` + ``errorCode: "A019"``
+    (``HttpExceptionFilter`` emits ``{timestamp, path, message, errorCode}``),
+    so a plain ``status_code == 409`` check never matches and a lost create race
+    surfaces as a hard provisioning failure instead of an adopt.
+
+    Deliberately narrow: a nestjs-zod validation failure is *also* a 400 but goes
+    through the filter's other branch and carries no ``errorCode``, so it stays a
+    real error rather than being silently swallowed as a conflict. 409 is still
+    honoured for older panels.
+    """
+    response = exc.response
+    if response.status_code == 409:
+        return True
+    if response.status_code != 400:
+        return False
+    try:
+        body = response.json()
+    except Exception:  # noqa: BLE001 - not JSON, fall through to the raw text
+        body = None
+    if isinstance(body, dict):
+        if body.get("errorCode") == USERNAME_CONFLICT_CODE:
+            return True
+        message = body.get("message")
+        if isinstance(message, str) and _USERNAME_TAKEN in message.lower():
+            return True
+        return False
+    return _USERNAME_TAKEN in (response.text or "").lower()
+
+
 def _unwrap(payload: dict) -> dict:
     """Remnawave sometimes nests the object under ``{"response": {...}}``."""
     if isinstance(payload, dict) and isinstance(payload.get("response"), dict):
@@ -156,6 +195,29 @@ async def find_user_by_telegram_id(
     return users[0] if users else None
 
 
+async def iter_users(*, size: int = 1000, max_pages: int = 200):
+    """Yield pages of panel users via ``GET /api/users/stream``.
+
+    3.x keyset pagination: pass back ``nextCursor`` until ``hasMore`` is false.
+    ``size`` is capped at 1000 by the contract. Lets a caller read the whole
+    population in ``ceil(N/1000)`` requests instead of one request per user;
+    ``max_pages`` is a safety stop so a misbehaving cursor can't loop forever.
+    """
+    cursor = None
+    for _ in range(max_pages):
+        params: dict = {"size": min(size, 1000)}
+        if cursor is not None:
+            params["cursor"] = cursor
+        res = await _req("GET", "/api/users/stream", params=params) or {}
+        users = res.get("users") or []
+        if users:
+            yield users
+        cursor = res.get("nextCursor")
+        if not res.get("hasMore") or not users or cursor is None:
+            return
+    logger.warning("iter_users hit the %d-page safety stop", max_pages)
+
+
 async def delete_user(identifier) -> None:
     """DELETE /api/users/{identifier} — the path is the id (3.x) or uuid (older),
     so the raw value works either way. 204/404 both mean 'gone'."""
@@ -165,15 +227,26 @@ async def delete_user(identifier) -> None:
 
 
 async def add_users_to_squad(squad_uuid: str, user_ids: list) -> dict | None:
-    """Attach users to an internal squad — safety net for a freshly created user
-    that came back with an empty ``activeInternalSquads``. Sends ``userIds``
-    (3.x, numbers) when the identifiers are numeric, else ``userUuids`` (older)."""
+    """Attach specific users to an internal squad — the safety net for a freshly
+    created user whose ``activeInternalSquads`` came back empty (§10.4).
+
+    Route per the 3.x contract (``INTERNAL_SQUADS_ROUTES.BULK_ACTIONS``):
+    ``POST /api/internal-squads/{uuid}/bulk-actions/add-many-users`` with body
+    ``{"userIds": [<numbers>]}``. Note the neighbouring ``add-users`` route adds
+    **every** user in the panel to the squad — never use it here.
+
+    Users are identified by numeric id only in 3.x, so a legacy uuid identifier
+    is dropped rather than sent in a request that cannot succeed.
+    """
     ids = [i for i in (_as_id(u) for u in user_ids) if i is not None]
-    if ids:
-        body = {"squadUuid": squad_uuid, "userIds": ids}
-    else:
-        uuids = [str(u) for u in user_ids if u]
-        if not uuids:
-            return None
-        body = {"squadUuid": squad_uuid, "userUuids": uuids}
-    return await _req("POST", "/api/squads/add-users-to-squad", json=body)
+    if not ids:
+        logger.warning(
+            "add_users_to_squad(%s): no numeric user ids in %r — nothing to do",
+            squad_uuid, user_ids,
+        )
+        return None
+    return await _req(
+        "POST",
+        f"/api/internal-squads/{squad_uuid}/bulk-actions/add-many-users",
+        json={"userIds": ids[:1000]},  # contract caps the batch at 1000
+    )

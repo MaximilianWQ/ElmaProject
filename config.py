@@ -342,7 +342,11 @@ TRAFFIC_MONITOR_SECONDS = _get_int("TRAFFIC_MONITOR_SECONDS", 300)
 # never races the webhook) and ≤ MAX_AGE.
 PAYMENT_RECONCILE_SECONDS = _get_int("PAYMENT_RECONCILE_SECONDS", 60)
 PAYMENT_RECONCILE_MIN_AGE_MIN = _get_int("PAYMENT_RECONCILE_MIN_AGE_MIN", 2)
-PAYMENT_RECONCILE_MAX_AGE_MIN = _get_int("PAYMENT_RECONCILE_MAX_AGE_MIN", 30)
+# 3 hours, not 30 minutes: a payment whose provisioning failed stays 'pending'
+# and is retried by this poller, so the window has to outlive a realistic panel
+# outage. At 30 minutes a longer outage left a paying user stranded for good.
+# Cheap to widen — the poller only ever looks at rows still in 'pending'.
+PAYMENT_RECONCILE_MAX_AGE_MIN = _get_int("PAYMENT_RECONCILE_MAX_AGE_MIN", 180)
 # Pause between users in the dashboard bypass backfill — paces the panel API so a
 # mass migration never trips Remnawave rate limits.
 BYPASS_BACKFILL_PACE_MS = _get_int("BYPASS_BACKFILL_PACE_MS", 150)

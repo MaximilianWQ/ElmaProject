@@ -8,6 +8,8 @@ premium row, and buying premium never touches this one.
 import logging
 from datetime import timedelta
 
+import httpx
+
 import config
 from database import (
     clear_bypass_panel,
@@ -36,6 +38,19 @@ def _extract(data: dict | None) -> dict:
     data = data or {}
     # Remnawave 3.x: numeric ``id`` (stringified); ``uuid`` is a legacy fallback.
     pid = data.get("id") or data.get("uuid") or data.get("userUuid")
+    # Consumption moved into a nested block in 3.x: the user object carries
+    # `trafficLimitBytes` at the top level but `usedTrafficBytes` only inside
+    # `userTraffic` (contract: ExtendedUsersSchema + UserTrafficSchema). Reading
+    # it off the top level silently yields 0 — which disables every low-traffic
+    # warning and zeroes the client's traffic bar. Keep the flat key as a
+    # fallback for older panels.
+    traffic = data.get("userTraffic") or {}
+    used = (
+        traffic.get("usedTrafficBytes")
+        or data.get("usedTrafficBytes")
+        or data.get("used_traffic_bytes")
+        or 0
+    )
     return {
         "uuid": str(pid) if pid is not None else None,
         "url": (
@@ -43,7 +58,7 @@ def _extract(data: dict | None) -> dict:
             or data.get("subscription_url")
             or data.get("url")
         ),
-        "used": data.get("usedTrafficBytes") or data.get("used_traffic_bytes") or 0,
+        "used": used,
         "limit": data.get("trafficLimitBytes") or data.get("traffic_limit_bytes") or 0,
         "squads": data.get("activeInternalSquads") or [],
     }
@@ -74,22 +89,45 @@ async def _ensure_squad(uuid: str | None, squads: list) -> None:
             logger.exception("Failed to add bypass %s to squad %s", uuid, squad)
 
 
+async def _adopt_existing(found: dict, limit_bytes: int) -> tuple[str, str | None] | None:
+    """Take over an entity already in the panel; None if it carries no id."""
+    e = _extract(found)
+    if not e["uuid"]:
+        return None
+    patched = await remnawave.update_user(
+        e["uuid"], trafficLimitBytes=int(limit_bytes),
+        status="ACTIVE", expireAt=_far_future(),
+    )
+    pe = _extract(patched)
+    await _ensure_squad(e["uuid"], e["squads"])
+    return e["uuid"], pe["url"] or e["url"]
+
+
 async def _create_or_adopt(telegram_id: int, limit_bytes: int) -> tuple[str, str | None]:
     """Create a fresh bypass entity, or adopt one left in the panel."""
     username = config.build_bypass_username(telegram_id)
     found = await remnawave.find_user_by_username(username)
     if found:
-        e = _extract(found)
-        if e["uuid"]:
-            patched = await remnawave.update_user(
-                e["uuid"], trafficLimitBytes=int(limit_bytes),
-                status="ACTIVE", expireAt=_far_future(),
-            )
-            pe = _extract(patched)
-            await _ensure_squad(e["uuid"], e["squads"])
-            return e["uuid"], pe["url"] or e["url"]
+        adopted = await _adopt_existing(found, limit_bytes)
+        if adopted:
+            return adopted
 
-    created = _extract(await remnawave.create_user(_create_payload(telegram_id, limit_bytes)))
+    try:
+        created = _extract(
+            await remnawave.create_user(_create_payload(telegram_id, limit_bytes))
+        )
+    except httpx.HTTPStatusError as exc:
+        # Same lost-race as the premium path: the entity appeared between the
+        # preflight lookup and the POST. The panel says 400/A019, so re-look it
+        # up and adopt instead of failing a paid top-up.
+        if not remnawave.is_username_conflict(exc):
+            raise
+        logger.info("Bypass create conflict for %s; adopting existing entity", telegram_id)
+        found = await remnawave.find_user_by_username(username)
+        adopted = await _adopt_existing(found, limit_bytes) if found else None
+        if adopted:
+            return adopted
+        raise
     if not created["uuid"]:
         raise RuntimeError(f"Remnawave bypass create returned no uuid for {telegram_id}")
     await _ensure_squad(created["uuid"], created["squads"])
@@ -168,6 +206,28 @@ async def _provision_traffic(telegram_id: int, extra_bytes: int) -> int:
         traffic_limit_bytes=int(extra_bytes), reset_notify=True,
     )
     return int(extra_bytes)
+
+
+async def usage_snapshot() -> dict[str, dict]:
+    """Every bypass entity's traffic in one paginated panel read.
+
+    Returns ``{panel_username: {used, limit, url}}``. The low-traffic monitor
+    needs the whole population each tick; asking per user was one HTTP
+    round-trip per subscriber, which stops fitting in the tick interval long
+    before the panel itself is the bottleneck.
+    """
+    prefix = config.BYPASS_USERNAME_PREFIX
+    snapshot: dict[str, dict] = {}
+    async for page in remnawave.iter_users():
+        for user in page:
+            username = user.get("username") or ""
+            if not username.startswith(prefix):
+                continue  # premium entities, other bots sharing the panel
+            e = _extract(user)
+            snapshot[username] = {
+                "used": int(e["used"]), "limit": int(e["limit"]), "url": e["url"],
+            }
+    return snapshot
 
 
 async def get_usage(telegram_id: int) -> dict | None:

@@ -27,6 +27,12 @@ STATUS_CONFIRMED = "CONFIRMED"   # success
 STATUS_CANCELED = "CANCELED"     # failure
 STATUS_CHARGEBACKED = "CHARGEBACKED"
 
+# Callback delivery, per the provider's docs: each attempt gets 60s to answer,
+# and a non-2xx is retried up to 3 times at this interval. Anything that has to
+# outlive a redelivery (the payment provisioning claim) is sized against it.
+CALLBACK_TIMEOUT_SECONDS = 60
+CALLBACK_RETRY_SECONDS = 300
+
 _TIMEOUT = httpx.Timeout(20.0)
 
 _client: httpx.AsyncClient | None = None

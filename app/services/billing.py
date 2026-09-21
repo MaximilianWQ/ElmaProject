@@ -14,6 +14,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 import config
 from app import emoji
+from app.events import bus
 from app.tariffs import TARIFFS, Tariff, get_tariff
 from app.utils import safe_send
 from database import (
@@ -143,6 +144,18 @@ async def finalize_confirmed_payment(bot: Bot, payment) -> None:
         await _delete_confirm_screen(bot, payment)
         await notify_purchase_activated(bot, tg)
 
+    # Tell the dashboard's live stream. This is the only signal it gets that a
+    # payment landed — the bus previously carried admin actions and broadcasts
+    # only. Published after provisioning succeeded, so the event means "served",
+    # and only from here, which both the webhook and the reconcile poller share.
+    bus.publish({
+        "type": "payment:confirmed",
+        "telegram_id": tg,
+        "amount_kopecks": amount,
+        "provider": payment["provider"],
+        "tariff_code": code or None,
+    })
+
     # Best-effort admin web-push for daily revenue milestones (guarded/no-op if
     # push is disabled or unavailable). Never affects payment settlement.
     from app.services import push_service
@@ -212,8 +225,14 @@ async def _reward_referrer(bot: Bot, buyer_id: int) -> None:
         new_expires = subscription_service.next_expiry(
             ref_sub, config.REFERRAL_BONUS_DAYS
         )
+        # Extend in place, keeping whatever the subscription already was.
+        # upsert_subscription overwrites `source`, and every scheduler query
+        # splits on `source <> 'trial'` — so stamping "referral" onto a trial
+        # user would start the paid renewal reminders for someone who never
+        # paid and drop them out of the trial funnel.
+        source = (ref_sub["source"] if ref_sub and ref_sub["source"] else "referral")
         sub = await subscription_service.create_or_renew(
-            referrer_id, new_expires, source="referral"
+            referrer_id, new_expires, source=source
         )
         enabled, tmpl = await auto_msg.resolve("referral_bonus", _DEF_REFERRAL_BONUS)
         if enabled:

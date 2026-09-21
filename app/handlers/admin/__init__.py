@@ -3,7 +3,6 @@
 Access is gated by a router-level filter — only ADMIN_IDS reach any handler
 here; everyone else falls through to the other routers.
 """
-import asyncio
 import html
 import logging
 import re
@@ -39,7 +38,8 @@ from app.services import (
 )
 from app.tariffs import get_tariff
 from app.utils import convert_tg_emoji, safe_edit, safe_send
-from config import ADMIN_IDS, REFERRAL_BONUS_DAYS, SUPPORT_USERNAME
+from app.utils.tasks import spawn
+from config import ADMIN_IDS, REFERRAL_BONUS_DAYS
 from database import (
     ACTIVITY_WINDOWS,
     REVENUE_WINDOWS,
@@ -50,6 +50,8 @@ from database import (
     reissue_sub_token,
     bypass_coverage,
     create_login_token,
+    finish_broadcast,
+    record_broadcast,
     find_user_by_username,
     get_bypass,
     get_subscription,
@@ -486,16 +488,23 @@ async def cmd_dashboard(message: Message) -> None:
     )
 
 
-BLOCK_TEXT = (
-    "🚫 <b>Доступ приостановлен</b>\n\n"
-    "Ваш доступ ограничен за нарушение\n"
-    "условий использования ELMA.\n\n"
-    "Причина: превышение лимита устройств.\n"
-    "Максимум по тарифу — 5 устройств.\n\n"
-    "Возврат средств и восстановление доступа\n"
-    "не предусмотрены.\n\n"
-    f"С вопросами: @{SUPPORT_USERNAME}"
-)
+def block_text() -> str:
+    """The "доступ приостановлен" notice, rendered from the live config.
+
+    The device limit is quoted back to the user as the reason their access was
+    revoked without a refund, so it has to be the limit this deployment actually
+    provisions (``DEVICE_LIMIT``) — a hard-coded 5 silently lied anywhere else.
+    """
+    return (
+        "🚫 <b>Доступ приостановлен</b>\n\n"
+        "Ваш доступ ограничен за нарушение\n"
+        f"условий использования {config.BRAND_NAME}.\n\n"
+        "Причина: превышение лимита устройств.\n"
+        f"Максимум по тарифу — {config.DEVICE_LIMIT} устройств.\n\n"
+        "Возврат средств и восстановление доступа\n"
+        "не предусмотрены.\n\n"
+        f"С вопросами: @{config.SUPPORT_USERNAME}"
+    )
 
 
 @router.message(Command("block"))
@@ -509,7 +518,7 @@ async def cmd_block(message: Message) -> None:
     sub = await revoke_subscription(target)
     if sub is not None:
         await subscription_service.deprovision(sub["panel_uuid"])
-    await safe_send(message.bot, target, BLOCK_TEXT)
+    await safe_send(message.bot, target, block_text())
     await message.answer(f"🚫 Доступ пользователя {target} ограничен, он уведомлён.")
 
 
@@ -645,12 +654,20 @@ def _who(username: str | None, tg_id: int) -> str:
     return f"@{username}" if username else f"id{tg_id}"
 
 
+# Telegram handles are [A-Za-z0-9_], up to 32 chars, optionally typed with "@".
+# The underscore is what matters here: ``"foo_bar".isalnum()`` is False, so the
+# previous check silently reported "не найден" for any handle typed without "@".
+_USERNAME_RE = re.compile(r"^@?[A-Za-z0-9_]{1,32}$")
+
+
 async def _resolve_user(query: str):
     """Look up a user by telegram_id or @username (shared by the find screens)."""
-    query = query.strip()
+    query = (query or "").strip()
+    if not query:
+        return None
     if query.lstrip("-").isdigit():
         return await get_user(int(query))
-    if query.startswith("@") or query.isalnum():
+    if _USERNAME_RE.match(query):
         return await find_user_by_username(query)
     return None
 
@@ -800,12 +817,7 @@ async def cb_find(call: CallbackQuery, state: FSMContext) -> None:
 @router.message(StateFilter(FindUser.waiting_query))
 async def on_find_query(message: Message, state: FSMContext) -> None:
     await state.clear()
-    query = (message.text or "").strip()
-    user = None
-    if query.lstrip("-").isdigit():
-        user = await get_user(int(query))
-    elif query.startswith("@") or query.isalnum():
-        user = await find_user_by_username(query)
+    user = await _resolve_user(message.text or "")
 
     if user is None:
         await message.answer("Пользователь не найден.", reply_markup=admin_menu())
@@ -941,11 +953,13 @@ async def cb_history(call: CallbackQuery) -> None:
 @router.callback_query(F.data == "admin:broadcast")
 async def cb_broadcast(call: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
-    await call.message.edit_text(
+    # safe_edit, not edit_text: the broadcast flow shows a photo preview, and a
+    # photo message cannot be edited into a text one — a raw edit_text throws.
+    await safe_edit(
+        call.message,
         "📢 <b>Рассылка</b>\n\nВыберите сегмент получателей 👇\n\n"
         "<i>На следующем шаге пришлёте сообщение и при желании добавите кнопки "
         "(скидка / канал).</i>",
-        parse_mode="HTML",
         reply_markup=admin_broadcast_segments(),
     )
     await call.answer()
@@ -1203,7 +1217,7 @@ async def cb_send_broadcast(call: CallbackQuery, state: FSMContext) -> None:
 
     await call.message.edit_text("📤 Рассылка запущена…")
     await call.answer()
-    asyncio.create_task(
+    spawn(
         _run_broadcast(
             call.bot,
             data["segment"],
@@ -1211,7 +1225,8 @@ async def cb_send_broadcast(call: CallbackQuery, state: FSMContext) -> None:
             data["text"],
             call.from_user.id,
             make_markup,
-        )
+        ),
+        name=f"admin-broadcast-{data['segment']}-{call.from_user.id}",
     )
 
 
@@ -1225,6 +1240,14 @@ async def _run_broadcast(
 ) -> None:
     ids = await recipients(segment)
     total = len(ids)
+    # Journal it in the same history the dashboard reads. Without this, a
+    # broadcast sent from inside the bot was invisible there — it could not be
+    # listed, re-sent or compared with the dashboard's own runs.
+    bid = await record_broadcast(
+        admin_id=admin_id, segment=segment, text=text, photo_file_id=photo_id,
+        button_text=None, button_url=None, buttons=None, total=total,
+        source="manual",
+    )
 
     async def send_one(uid: int) -> None:
         markup = await make_markup(uid)
@@ -1246,7 +1269,15 @@ async def _run_broadcast(
             f"(✅ {res.sent} · 🚫 {res.blocked} · ⚠️ {res.failed})",
         )
 
-    res = await broadcaster.broadcast(ids, send_one, progress=progress)
+    try:
+        res = await broadcaster.broadcast(ids, send_one, progress=progress)
+    except Exception:
+        # Close the journal row out — a crash must not leave it at 'running'.
+        await finish_broadcast(bid, sent=0, blocked=0, failed=total)
+        raise
+    await finish_broadcast(
+        bid, sent=res.sent, blocked=res.blocked, failed=res.failed
+    )
     logger.info(
         "Broadcast '%s' done: %d sent, %d blocked, %d failed",
         segment, res.sent, res.blocked, res.failed,

@@ -33,6 +33,8 @@ from config import (
 from database import (
     all_bypass,
     automation_due_users,
+    claim_payment_for_processing,
+    release_payment_claim,
     due_reactivation_ladder,
     due_reminders,
     due_trial_funnel,
@@ -538,13 +540,19 @@ async def _traffic_monitor(bot: Bot) -> None:
     if not _enabled("traffic"):
         return
     rows = await all_bypass()
+    if not rows:
+        return
+    # ONE paginated read of the panel covers every subscriber. Asking per user
+    # meant an HTTP round-trip each, so a few thousand users could not be walked
+    # inside TRAFFIC_MONITOR_SECONDS and the passes piled up on the panel.
+    snapshot = await bypass_service.usage_snapshot()
     sent = 0
     for row in rows:
         tg = row["telegram_id"]
-        usage = await bypass_service.get_usage(tg)
+        usage = snapshot.get(config.build_bypass_username(tg))
         if not usage or not usage["limit"]:
             continue
-        remaining = usage["remaining"]
+        remaining = max(0, usage["limit"] - usage["used"])
         target = -1
         for i, (threshold, _label) in enumerate(config.TRAFFIC_NOTIFY_THRESHOLDS):
             if remaining <= threshold:
@@ -620,12 +628,20 @@ async def _reconcile_payments(bot: Bot) -> None:
         logger.info("Reconcile %s: provider status=%s (code=%s)", txn, status, payment["tariff_code"])
         if status != platega.STATUS_CONFIRMED:
             continue
+        # Same claim the webhook takes — otherwise this poller and an in-flight
+        # webhook delivery would both provision the very same payment.
+        claimed = await claim_payment_for_processing(txn)
+        if claimed is None:
+            logger.info("Reconcile %s: already settled or in flight, skipping", txn)
+            continue
         try:
-            await billing.finalize_confirmed_payment(bot, payment)
+            await billing.finalize_confirmed_payment(bot, claimed)
             fixed += 1
             logger.info("Reconciled missed payment %s (code=%s)", txn, payment["tariff_code"])
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             logger.exception("Reconcile finalize failed for %s", txn)
+            # Money already taken — hand the claim back so the next tick retries.
+            await release_payment_claim(txn, f"Реконсиляция не удалась: {exc}")
     if fixed:
         logger.info("Payment reconcile finalized %d missed payment(s)", fixed)
 

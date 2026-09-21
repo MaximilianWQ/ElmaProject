@@ -134,6 +134,11 @@ ALTER TABLE payments ADD COLUMN IF NOT EXISTS fail_reason TEXT;
 -- Message id of the «Проверьте заказ» screen, so it can be removed once the
 -- payment is confirmed by the webhook.
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS confirm_message_id BIGINT;
+-- Provisioning lease. A confirmed payment is claimed (processing_at = NOW())
+-- before it is provisioned, so a provider retry racing the reconcile poller can
+-- never grant the same payment twice. The row STAYS 'pending' while held, so a
+-- crash mid-flight only parks it until the lease expires and the poller retries.
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS processing_at TIMESTAMPTZ;
 
 CREATE INDEX IF NOT EXISTS idx_subs_expiry
     ON subscriptions(expires_at) WHERE status = 'active';
@@ -256,6 +261,10 @@ CREATE INDEX IF NOT EXISTS idx_scheduled_due
 ALTER TABLE broadcast_history ADD COLUMN IF NOT EXISTS buttons TEXT;
 ALTER TABLE scheduled_broadcasts ADD COLUMN IF NOT EXISTS buttons TEXT;
 -- A/B test: a second text variant, split 50/50 by user id, per-variant counts.
+-- Scheduled runs carry the variant too, otherwise a recurring A/B test silently
+-- degrades into a plain single-variant send when the scheduler fires it.
+ALTER TABLE scheduled_broadcasts ADD COLUMN IF NOT EXISTS text_b TEXT;
+ALTER TABLE scheduled_broadcasts ADD COLUMN IF NOT EXISTS is_ab BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE broadcast_history ADD COLUMN IF NOT EXISTS text_b TEXT;
 ALTER TABLE broadcast_history ADD COLUMN IF NOT EXISTS is_ab  BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE broadcast_history ADD COLUMN IF NOT EXISTS sent_a INTEGER NOT NULL DEFAULT 0;

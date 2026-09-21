@@ -1,4 +1,7 @@
-aiogram>=3.4,<4.0
+# 3.25 is the floor, not 3.4: the keyboards use the Bot API 9.4 button fields
+# `style` and `icon_custom_emoji_id`. On an older aiogram those are accepted as
+# extra fields and quietly dropped, so every button loses its colour and icon.
+aiogram>=3.25,<4.0
 aiohttp>=3.9
 asyncpg>=0.29
 httpx>=0.27

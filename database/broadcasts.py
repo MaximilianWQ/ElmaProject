@@ -93,18 +93,20 @@ async def create_scheduled(
     time_msk: str | None,
     weekdays: str | None,
     buttons: str | None = None,
+    text_b: str | None = None,
+    is_ab: bool = False,
 ) -> asyncpg.Record:
     pool = get_pool()
     return await pool.fetchrow(
         """
         INSERT INTO scheduled_broadcasts
             (admin_id, segment, text, photo_file_id, button_text, button_url,
-             kind, run_at, time_msk, weekdays, buttons)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+             kind, run_at, time_msk, weekdays, buttons, text_b, is_ab)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
         RETURNING *
         """,
         admin_id, segment, text, photo_file_id, button_text, button_url,
-        kind, run_at, time_msk, weekdays, buttons,
+        kind, run_at, time_msk, weekdays, buttons, text_b, is_ab,
     )
 
 

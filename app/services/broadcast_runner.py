@@ -7,8 +7,10 @@ think in **Moscow time (MSK, UTC+3, no DST)** — that's what the dashboard show
 MSK↔UTC here so the DB stays UTC-only.
 """
 import asyncio
+import html
 import json
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
@@ -19,6 +21,7 @@ import config
 import database
 from app.events import bus
 from app.utils import convert_tg_emoji, safe_send, strip_tg_emoji
+from app.utils.tasks import spawn
 
 from . import broadcaster
 
@@ -34,6 +37,38 @@ SCHEDULE_CHECK_SECONDS = 30
 MAX_SCHEDULE_DAYS = 7
 
 _SRC_LABEL = {"manual": "", "resend": " (повтор)", "scheduled": " (по расписанию)"}
+
+# --- Length limits ---------------------------------------------------------
+# Telegram: text is "1-4096 characters after entities parsing", a photo caption
+# "0-1024". Both counted in UTF-16 code units, and the HTML markup itself does
+# NOT count. An over-long body fails for EVERY recipient, so it is caught before
+# the first send instead of after the last one.
+TEXT_LIMIT = 4096
+CAPTION_LIMIT = 1024
+
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+
+
+class BroadcastTooLong(ValueError):
+    """The body exceeds what Telegram accepts — nothing was sent."""
+
+
+def visible_length(body: str) -> int:
+    """Length Telegram counts: markup stripped, entities unescaped, UTF-16 units."""
+    text = html.unescape(_HTML_TAG_RE.sub("", body or ""))
+    return len(text.encode("utf-16-le")) // 2
+
+
+def check_length(body: str, *, photo: bool) -> None:
+    """Raise :class:`BroadcastTooLong` if ``body`` can't be delivered as-is."""
+    limit = CAPTION_LIMIT if photo else TEXT_LIMIT
+    n = visible_length(body)
+    if n > limit:
+        kind = "подписи под фото" if photo else "текста"
+        raise BroadcastTooLong(
+            f"Длина {kind} — {n} символов, лимит Telegram — {limit}. "
+            f"Сократите на {n - limit}."
+        )
 
 
 def _now() -> datetime:
@@ -91,10 +126,27 @@ def _parse_buttons(buttons) -> list[dict]:
 
 
 def build_markup(button_text: str | None, button_url: str | None, buttons=None):
-    """Recipient keyboard: an optional custom URL button plus preset / discount
-    buttons (``buttons`` is a JSON array or legacy CSV). None if nothing."""
+    """Recipient keyboard, or None if nothing could be built.
+
+    Thin wrapper over :func:`build_markup_report` for callers that don't care
+    why a button was dropped."""
+    return build_markup_report(button_text, button_url, buttons)[0]
+
+
+def build_markup_report(
+    button_text: str | None, button_url: str | None, buttons=None
+) -> tuple[object | None, list[str]]:
+    """Recipient keyboard plus a list of human-readable reasons for every spec
+    that could NOT be turned into a button.
+
+    Silently dropping a malformed spec is how an admin ends up sending a
+    call-to-action-less broadcast without ever being told: the wizard accepted
+    the input, the keyboard just came out empty."""
     kb = InlineKeyboardBuilder()
     has_any = False
+    dropped: list[str] = []
+    if button_text and not button_url:
+        dropped.append(f"кнопка «{button_text}» пропущена: не задан URL")
     if button_text and button_url:
         kb.button(text=button_text, url=button_url)
         has_any = True
@@ -105,6 +157,7 @@ def build_markup(button_text: str | None, button_url: str | None, buttons=None):
                 from config import BYPASS_ENABLED
 
                 if not BYPASS_ENABLED:
+                    dropped.append("кнопка «ГБ обхода» пропущена: обход выключен")
                     continue
             label, cb = _CALLBACK_PRESETS[kind]
             kb.button(text=label, callback_data=cb)
@@ -123,15 +176,31 @@ def build_markup(button_text: str | None, button_url: str | None, buttons=None):
             if SUPPORT_URL:
                 kb.button(text="💬 Поддержка", url=SUPPORT_URL)
                 has_any = True
+            else:
+                dropped.append("кнопка поддержки пропущена: не задан SUPPORT_URL")
         elif kind == "discount":
             try:
                 pct, hours = int(s["pct"]), int(s["hours"])
             except (KeyError, TypeError, ValueError):
+                dropped.append(
+                    f"кнопка скидки пропущена: не разобраны параметры {s!r}"
+                )
                 continue
             scope = s.get("scope", "all")
-            if not (0 < pct < 100 and 0 < hours <= 8760):
+            if not (0 < pct < 100):
+                dropped.append(
+                    f"кнопка скидки пропущена: процент {pct} вне диапазона 1–99"
+                )
+                continue
+            if not (0 < hours <= 8760):
+                dropped.append(
+                    f"кнопка скидки пропущена: срок {hours} ч вне диапазона 1–8760"
+                )
                 continue
             if scope != "all" and scope not in _SCOPE_TITLE:
+                dropped.append(
+                    f"кнопка скидки пропущена: неизвестный тариф {scope!r}"
+                )
                 continue
             kb.button(
                 text=_disc_label(pct, scope),
@@ -139,10 +208,12 @@ def build_markup(button_text: str | None, button_url: str | None, buttons=None):
                 style="success",
             )
             has_any = True
+        else:
+            dropped.append(f"кнопка пропущена: неизвестный тип {kind!r}")
     if not has_any:
-        return None
+        return None, dropped
     kb.adjust(1)
-    return kb.as_markup()
+    return kb.as_markup(), dropped
 
 
 def build_sender(bot, text: str, photo: str | None, markup):
@@ -207,13 +278,44 @@ async def run_broadcast(
     ab = bool(is_ab and text_b)
     user_ids = await database.recipients(segment)
     total = len(user_ids)
+    label = database.SEGMENTS.get(segment, (segment, ""))[0]
+
+    # Refuse an undeliverable body up front: it would fail identically for every
+    # recipient, so the only outcome would be a 100%-failed run the admin learns
+    # about at the end. Journal it as a finished-with-failures run so it is
+    # visible in the history, and tell the admins exactly what to shorten.
+    try:
+        for body in (text, text_b) if ab else (text,):
+            check_length(body, photo=bool(photo_file_id))
+    except BroadcastTooLong as exc:
+        bid = await database.record_broadcast(
+            admin_id=admin_id, segment=segment, text=text,
+            photo_file_id=photo_file_id, button_text=button_text,
+            button_url=button_url, buttons=buttons, total=total, source=source,
+            text_b=text_b if ab else None, is_ab=ab,
+        )
+        await database.finish_broadcast(bid, sent=0, blocked=0, failed=total)
+        bus.publish({
+            "type": "broadcast:done", "id": bid, "segment": segment,
+            "sent": 0, "blocked": 0, "failed": total, "total": total,
+        })
+        logger.warning("Broadcast %s to %s rejected: %s", bid, segment, exc)
+        note = (
+            f"🚫 <b>Рассылка не отправлена{_SRC_LABEL.get(source, '')}</b>\n\n"
+            f"Сегмент: <b>{label}</b>\n"
+            f"Получателей: {total}\n\n"
+            f"{exc}"
+        )
+        for aid in config.ADMIN_IDS:
+            await safe_send(bot, aid, note)
+        return {"id": bid, "total": total, "error": str(exc)}
+
     bid = await database.record_broadcast(
         admin_id=admin_id, segment=segment, text=text, photo_file_id=photo_file_id,
         button_text=button_text, button_url=button_url, buttons=buttons,
         total=total, source=source, text_b=text_b if ab else None, is_ab=ab,
     )
-    label = database.SEGMENTS.get(segment, (segment, ""))[0]
-    markup = build_markup(button_text, button_url, buttons)
+    markup, dropped_buttons = build_markup_report(button_text, button_url, buttons)
 
     bus.publish({
         "type": "broadcast:created", "id": bid, "segment": segment,
@@ -270,6 +372,12 @@ async def run_broadcast(
         f"🚫 Заблокировали: {res.blocked}\n"
         f"⚠️ Ошибок: {res.failed}"
     )
+    if dropped_buttons:
+        # The keyboard came out smaller than asked for — say so, otherwise the
+        # admin just sees a successful run with no call-to-action on it.
+        summary += "\n\n⚠️ <b>Кнопки не добавлены:</b>\n" + "\n".join(
+            f"• {html.escape(d)}" for d in dropped_buttons
+        )
     for aid in config.ADMIN_IDS:
         await safe_send(bot, aid, summary)
 
@@ -372,17 +480,24 @@ async def scheduled_broadcast_loop(bot) -> None:
                     row["kind"], row["time_msk"], row["weekdays"], _now()
                 )
                 await database.advance_scheduled(row["id"], nxt)
-                asyncio.create_task(run_broadcast(
-                    bot,
-                    admin_id=row["admin_id"],
-                    segment=row["segment"],
-                    text=row["text"],
-                    photo_file_id=row["photo_file_id"],
-                    button_text=row["button_text"],
-                    button_url=row["button_url"],
-                    buttons=row["buttons"],
-                    source="scheduled",
-                ))
+                spawn(
+                    run_broadcast(
+                        bot,
+                        admin_id=row["admin_id"],
+                        segment=row["segment"],
+                        text=row["text"],
+                        photo_file_id=row["photo_file_id"],
+                        button_text=row["button_text"],
+                        button_url=row["button_url"],
+                        buttons=row["buttons"],
+                        # A recurring A/B test must stay an A/B test when the
+                        # scheduler fires it, not collapse to variant A.
+                        text_b=row["text_b"],
+                        is_ab=bool(row["is_ab"]),
+                        source="scheduled",
+                    ),
+                    name=f"scheduled-broadcast-{row['id']}",
+                )
                 logger.info("Fired scheduled broadcast %s (%s)", row["id"], row["kind"])
         except Exception:  # noqa: BLE001 - keep the loop alive
             logger.exception("scheduled_broadcast_loop iteration failed")

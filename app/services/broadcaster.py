@@ -25,6 +25,9 @@ from database import mark_unreachable
 
 logger = logging.getLogger(__name__)
 
+# How many times one recipient is attempted while Telegram keeps answering 429.
+RETRY_ATTEMPTS = 3
+
 
 @dataclass
 class BroadcastResult:
@@ -47,9 +50,17 @@ async def broadcast(
     progress_every: int = 5000,
 ) -> BroadcastResult:
     """Send to every id in ``user_ids`` via ``send_one(uid)``, paced to ``rate``
-    messages/second with at most ``concurrency`` in-flight. ``progress`` (if
-    given) is awaited every ``progress_every`` dispatched messages."""
+    messages/second with at most ``concurrency`` in-flight.
+
+    ``progress`` (if given) is awaited roughly ten times per run: the step is a
+    tenth of the audience, floored at 100 and capped at ``progress_every``. A
+    fixed constant cannot work for both ends — 5000 meant a 1000-user broadcast
+    reported *nothing at all*, while a small constant would spam the admin (each
+    report is a Telegram message) on a 50k run.
+    """
     res = BroadcastResult()
+    total = len(user_ids)
+    step = max(100, min(progress_every, total // 10)) if progress else 0
     sem = asyncio.Semaphore(concurrency)
     interval = 1.0 / rate if rate > 0 else 0.0
     next_slot = time.monotonic()
@@ -59,16 +70,28 @@ async def broadcast(
     async def _send(uid: int) -> None:
         nonlocal pause_until
         try:
-            try:
-                await send_one(uid)
-                res.sent += 1
-            except TelegramRetryAfter as exc:
-                # Back off the whole run, then retry this recipient once.
-                pause_until = max(pause_until, time.monotonic() + exc.retry_after)
-                logger.warning("Broadcast hit RetryAfter %.0fs", exc.retry_after)
-                await asyncio.sleep(exc.retry_after)
-                await send_one(uid)
-                res.sent += 1
+            # 429 is Telegram asking us to slow down, not a delivery failure —
+            # retrying once was not enough, because during a large run the whole
+            # fan-out is being throttled and the retry is very likely throttled
+            # too. Honour the server-provided delay for a few attempts before
+            # writing the recipient off.
+            for attempt in range(1, RETRY_ATTEMPTS + 1):
+                try:
+                    await send_one(uid)
+                    res.sent += 1
+                    return
+                except TelegramRetryAfter as exc:
+                    pause_until = max(pause_until, time.monotonic() + exc.retry_after)
+                    logger.warning(
+                        "Broadcast hit RetryAfter %.0fs (attempt %d/%d)",
+                        exc.retry_after, attempt, RETRY_ATTEMPTS,
+                    )
+                    await asyncio.sleep(exc.retry_after)
+            res.failed += 1
+            logger.warning(
+                "Broadcast gave up on %s after %d throttled attempts",
+                uid, RETRY_ATTEMPTS,
+            )
         except TelegramForbiddenError:
             res.blocked += 1
             await mark_unreachable(uid)
@@ -91,7 +114,7 @@ async def broadcast(
         next_slot = max(next_slot + interval, time.monotonic())
 
         tasks.append(asyncio.create_task(_send(uid)))
-        if progress and idx % progress_every == 0:
+        if progress and step and idx % step == 0:
             await progress(res)
 
     await asyncio.gather(*tasks, return_exceptions=True)

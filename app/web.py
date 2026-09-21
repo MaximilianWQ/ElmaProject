@@ -20,11 +20,13 @@ from aiohttp import web
 import config
 from app.services import aggregator, billing, bypass_service, platega
 from database import (
+    claim_payment_for_processing,
     get_bypass,
     get_payment,
     get_subscription,
     is_payment_paid,
     mark_payment_failed,
+    release_payment_claim,
     user_by_sub_token,
 )
 
@@ -273,19 +275,29 @@ async def _platega_webhook(request: web.Request) -> web.Response:
         await mark_payment_failed(txn_id, reason)
         return web.Response(text="ignored")
 
-    payment = await get_payment(txn_id)
+    # Claim the payment before provisioning. This is the ONLY gate against
+    # granting one payment twice: Platega retries every 5 min and the reconcile
+    # poller scans in parallel, so a plain "is it paid yet?" check would let two
+    # deliveries through while the first is still talking to the panel.
+    payment = await claim_payment_for_processing(txn_id)
     if payment is None:
-        # We journal a pending row before showing the pay link, so this is odd.
-        logger.warning("Platega CONFIRMED for unknown txn %s", txn_id)
-        return web.Response(text="unknown txn")
+        if await get_payment(txn_id) is None:
+            # We journal a pending row before showing the pay link, so this is odd.
+            logger.warning("Platega CONFIRMED for unknown txn %s", txn_id)
+            return web.Response(text="unknown txn")
+        # Already settled, or another worker is provisioning it right now.
+        return web.Response(text="already processed")
 
     bot: Bot = request.app["bot"]
     try:
         await billing.finalize_confirmed_payment(bot, payment)
     except Exception as exc:  # noqa: BLE001 - let Platega retry (idempotent)
         logger.exception("Finalize failed for Platega txn %s", txn_id)
-        # Surface the error in the admin tab; status stays retryable until paid.
-        await mark_payment_failed(txn_id, f"Ошибка обработки оплаты: {exc}")
+        # The money HAS been taken, so the row must stay 'pending' — that is the
+        # only status pending_payments_recent() looks at. Marking it 'failed'
+        # here would hide a genuinely paid transaction from the reconcile
+        # safety net forever. Record the reason, drop the claim, let it retry.
+        await release_payment_claim(txn_id, f"Ошибка обработки оплаты: {exc}")
         return web.Response(status=500, text="finalize failed")
 
     logger.info(

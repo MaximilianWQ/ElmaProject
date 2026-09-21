@@ -164,6 +164,77 @@ async def pending_payments_recent(min_age_min: int, max_age_min: int) -> list[as
     )
 
 
+# Statuses a confirmed payment may be claimed from. 'failed' is included on
+# purpose: providers deliver out of order and a user can retry on the same
+# transaction, so a CANCELED that lands before the CONFIRMED must not lock the
+# buyer out of access they went on to pay for. 'paid' and 'refunded' are
+# deliberately absent — those are settled.
+CLAIMABLE_STATUSES = ("pending", "failed")
+
+# How long one claim holds a payment. It must comfortably outlive the provider's
+# callback retry interval (Platega: 3 retries, 5 minutes apart) — at exactly that
+# interval a redelivery arrives just as the lease lapses and would claim a
+# payment whose first attempt is still inside the panel. The cost of a longer
+# lease is only that a crashed process parks the payment for that long before the
+# reconcile poller retries it, well inside PAYMENT_RECONCILE_MAX_AGE_MIN.
+PAYMENT_CLAIM_LEASE_SECONDS = 900
+
+
+async def claim_payment_for_processing(
+    invoice_id: str, *, lease_seconds: int = PAYMENT_CLAIM_LEASE_SECONDS
+) -> asyncpg.Record | None:
+    """Atomically take ownership of a payment before provisioning it.
+
+    Returns the payment row if this caller won the claim, or ``None`` when the
+    payment is unknown, already settled, or another caller holds a live lease.
+    The provider webhook and the reconcile poller both go through here, so one
+    confirmed payment can never be provisioned twice (§5.3).
+
+    A single UPDATE is the whole lock: a concurrent identical statement blocks on
+    the row, then re-evaluates the WHERE against the already-claimed row under
+    READ COMMITTED and matches nothing. The claimed row is normalised back to
+    ``'pending'``, which is the only status :func:`pending_payments_recent`
+    looks at — so a crash mid-flight parks the payment just until
+    ``lease_seconds`` elapse and the poller retries it.
+    """
+    pool = get_pool()
+    return await pool.fetchrow(
+        """
+        UPDATE payments
+        SET processing_at = NOW(),
+            status = 'pending'
+        WHERE invoice_id = $1
+          AND status = ANY($3::text[])
+          AND (processing_at IS NULL
+               OR processing_at < NOW() - make_interval(secs => $2::int))
+        RETURNING *
+        """,
+        invoice_id,
+        lease_seconds,
+        list(CLAIMABLE_STATUSES),
+    )
+
+
+async def release_payment_claim(invoice_id: str, reason: str | None = None) -> None:
+    """Hand a claimed payment back for a later retry, keeping it ``'pending'``.
+
+    Used when provisioning a genuinely CONFIRMED payment failed: the money was
+    taken, so the row must stay a reconcile candidate. ``reason`` is recorded for
+    the admin Payments tab without changing the status.
+    """
+    pool = get_pool()
+    await pool.execute(
+        """
+        UPDATE payments
+        SET processing_at = NULL,
+            fail_reason = COALESCE($2, fail_reason)
+        WHERE invoice_id = $1 AND status = 'pending'
+        """,
+        invoice_id,
+        reason[:500] if reason else None,
+    )
+
+
 async def is_payment_paid(invoice_id: str) -> bool:
     pool = get_pool()
     row = await pool.fetchrow(
@@ -219,7 +290,9 @@ async def mark_payment_paid(
 ) -> None:
     """Mark a payment paid *after* provisioning succeeded (§10.1).
 
-    Upserts so the admin path (no pre-journaled pending row) also works.
+    Upserts so the admin path (no pre-journaled pending row) also works. A
+    refunded payment is never flipped back to paid — the money is gone, and an
+    unconditional upsert would quietly rewrite that history.
     """
     pool = get_pool()
     await pool.execute(
@@ -227,7 +300,9 @@ async def mark_payment_paid(
         INSERT INTO payments (telegram_id, invoice_id, amount_kopecks, status, paid_at)
         VALUES ($1, $2, $3, 'paid', NOW())
         ON CONFLICT (invoice_id) DO UPDATE
-            SET status = 'paid', paid_at = NOW(), fail_reason = NULL
+            SET status = 'paid', paid_at = NOW(), fail_reason = NULL,
+                processing_at = NULL
+            WHERE payments.status <> 'refunded'
         """,
         telegram_id,
         invoice_id,

@@ -60,9 +60,21 @@ async def create_automation(
     )
 
 
+# Column names are interpolated into the UPDATE below, so they must never come
+# from a caller unchecked. The route above happens to whitelist them today; this
+# keeps the primitive safe regardless of who calls it next.
+_UPDATABLE_COLUMNS = frozenset({
+    "name", "trigger_type", "delay_hours", "enabled", "text",
+    "discount_pct", "discount_hours", "discount_scope", "buttons",
+})
+
+
 async def update_automation(automation_id: int, **fields) -> None:
     if not fields:
         return
+    unknown = set(fields) - _UPDATABLE_COLUMNS
+    if unknown:
+        raise ValueError(f"not updatable automation columns: {sorted(unknown)}")
     cols, vals = [], []
     for i, (k, v) in enumerate(fields.items(), start=2):
         cols.append(f"{k} = ${i}")

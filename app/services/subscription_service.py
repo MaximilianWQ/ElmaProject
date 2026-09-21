@@ -223,8 +223,11 @@ async def create_or_renew(
     try:
         created = await remnawave.create_user(payload)
     except httpx.HTTPStatusError as exc:
-        if exc.response.status_code == 409:
-            # Race: the record appeared between preflight and POST -> adopt.
+        # The panel reports a taken username as 400/A019, not 409 — see
+        # remnawave.is_username_conflict. Checking the status alone left this
+        # adopt branch dead, so a record that appeared between the preflight and
+        # the POST failed the whole provision instead of being taken over.
+        if remnawave.is_username_conflict(exc):
             logger.info("Create conflict for %s; adopting existing record", telegram_id)
             found = await _find_panel_user(telegram_id, username)
             if found:
