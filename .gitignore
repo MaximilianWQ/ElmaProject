@@ -27,3 +27,6 @@ dashboard/node_modules/
 
 # TypeScript incremental build cache
 *.tsbuildinfo
+
+# Playwright MCP scratch output (screenshots, console logs)
+.playwright-mcp/

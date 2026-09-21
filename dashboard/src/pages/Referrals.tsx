@@ -5,7 +5,7 @@ import { endpoints } from "@/lib/api";
 import { fmtNum } from "@/lib/format";
 import { PageLoader } from "@/components/Spinner";
 import { EmptyState } from "@/components/EmptyState";
-import { StatCard } from "@/components/StatCard";
+import { StatCard, PageHeader } from "@/components/StatCard";
 import { Pagination } from "./Users";
 
 export default function Referrals() {
@@ -15,8 +15,8 @@ export default function Referrals() {
   const pages = top.data ? Math.max(1, Math.ceil(top.data.total / top.data.limit)) : 1;
 
   return (
-    <div className="space-y-5">
-      <h1 className="text-2xl font-bold tracking-tight">Рефералы</h1>
+    <div className="stagger-children space-y-5">
+      <PageHeader title="Рефералы" subtitle="Кто приглашает и сколько из приглашённых платит." />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatCard label="Всего приглашений" value={fmtNum(overall.data?.total)} loading={overall.isLoading} />

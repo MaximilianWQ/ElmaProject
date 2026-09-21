@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { cn } from "@/lib/cn";
 import { toast } from "@/store/toast";
+import { PageHeader } from "@/components/StatCard";
 
 export default function MarketingLinks() {
   const qc = useQueryClient();
@@ -39,11 +40,16 @@ export default function MarketingLinks() {
   };
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold tracking-tight">Ссылки для трафика</h1>
-        {list.data && <span className="text-sm text-fg-muted">{fmtNum(list.data.length)} шт.</span>}
-      </div>
+    <div className="stagger-children space-y-5">
+      <PageHeader
+        title="Ссылки для трафика"
+        subtitle="Воронка каждой ссылки: клики → регистрации → триал → оплата."
+        actions={
+          list.data ? (
+            <span className="text-sm text-fg-muted">{fmtNum(list.data.length)} шт.</span>
+          ) : undefined
+        }
+      />
 
       <div className="card card-pad">
         <div className="label mb-2">Новая ссылка</div>

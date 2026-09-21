@@ -6,6 +6,7 @@ import { fmtDateTime } from "@/lib/format";
 import { PageLoader } from "@/components/Spinner";
 import { EmptyState } from "@/components/EmptyState";
 import { Pagination } from "./Users";
+import { PageHeader } from "@/components/StatCard";
 
 const ACTION: Record<string, string> = {
   grant: "badge-success", revoke: "badge-danger", broadcast: "badge-accent",
@@ -18,8 +19,8 @@ export default function Audit() {
   const pages = list.data ? Math.max(1, Math.ceil(list.data.total / list.data.limit)) : 1;
 
   return (
-    <div className="space-y-5">
-      <h1 className="text-2xl font-bold tracking-tight">Аудит</h1>
+    <div className="stagger-children space-y-5">
+      <PageHeader title="Аудит" subtitle="Все действия админов в консоли." />
 
       <div className="card overflow-hidden">
         {list.isLoading ? <PageLoader /> :

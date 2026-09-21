@@ -1,31 +1,97 @@
-import type { LucideIcon } from "lucide-react";
+import { type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/cn";
 
-export function StatCard({
-  label, value, icon: Icon, hint, accent = false, loading = false,
-}: {
+interface Props {
   label: string;
+  /** ReactNode, not string: pages pass <AnimatedNum/> to count the value up. */
   value: React.ReactNode;
+  hint?: string;
+  /** Small pill to the right of the number, e.g. a delta. */
+  pill?: string;
   icon?: LucideIcon;
-  hint?: React.ReactNode;
-  accent?: boolean;
+  tone?: "default" | "success" | "warning" | "danger" | "accent" | "info";
   loading?: boolean;
-}) {
+}
+
+const TONES: Record<NonNullable<Props["tone"]>, string> = {
+  default: "from-bg-elevated to-bg-card",
+  accent: "from-accent/12 to-bg-card",
+  success: "from-success/12 to-bg-card",
+  warning: "from-warning/12 to-bg-card",
+  danger: "from-danger/12 to-bg-card",
+  info: "from-info/12 to-bg-card",
+};
+
+const ICON_TONES: Record<NonNullable<Props["tone"]>, string> = {
+  default: "text-fg-muted",
+  accent: "text-accent",
+  success: "text-success",
+  warning: "text-warning",
+  danger: "text-danger",
+  info: "text-info",
+};
+
+export function StatCard({
+  label,
+  value,
+  hint,
+  pill,
+  icon: Icon,
+  tone = "default",
+  loading,
+}: Props) {
   return (
-    <div className="card card-pad hover-lift">
+    <div className="card card-hover relative overflow-hidden p-5 animate-fade-in">
+      <div
+        className={cn(
+          "pointer-events-none absolute inset-0 -z-10 bg-gradient-to-br opacity-60",
+          TONES[tone],
+        )}
+      />
       <div className="flex items-start justify-between gap-3">
-        <div className="label">{label}</div>
+        <div className="min-w-0 flex-1">
+          <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-fg-subtle">
+            {label}
+          </div>
+          <div className="mt-2 flex min-w-0 items-baseline gap-2">
+            {loading ? (
+              <span className="skeleton inline-block h-8 w-28 rounded-md" />
+            ) : (
+              <span className="stat-num block min-w-0 truncate">{value}</span>
+            )}
+            {pill && !loading && <span className="stat-pill shrink-0">{pill}</span>}
+          </div>
+          {hint && <div className="mt-1 truncate text-xs text-fg-muted">{hint}</div>}
+        </div>
         {Icon && (
-          <div className={cn("grid h-8 w-8 place-items-center rounded-xl",
-            accent ? "bg-accent/10 text-accent" : "bg-bg-elevated text-fg-muted")}>
-            <Icon className="h-4 w-4" />
+          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-bg-elevated/80 ring-1 ring-border">
+            <Icon className={cn("h-4 w-4", ICON_TONES[tone])} strokeWidth={2} />
           </div>
         )}
       </div>
-      <div className="mt-2 text-2xl font-bold tracking-tight">
-        {loading ? <span className="skeleton inline-block h-7 w-24 align-middle" /> : value}
+    </div>
+  );
+}
+
+/** Consistent page title block — every page opens with one. */
+export function PageHeader({
+  title,
+  subtitle,
+  actions,
+}: {
+  title: string;
+  subtitle?: string;
+  actions?: React.ReactNode;
+}) {
+  return (
+    <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+      <div className="min-w-0">
+        <h1 className="text-2xl font-semibold tracking-tight text-fg md:text-3xl">
+          {title}
+        </h1>
+        {subtitle && <p className="mt-1 text-sm text-fg-muted">{subtitle}</p>}
       </div>
-      {hint && <div className="mt-1 text-xs text-fg-muted">{hint}</div>}
+      {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
     </div>
   );
 }

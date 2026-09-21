@@ -6,6 +6,7 @@ import { fmtDate, fmtNum } from "@/lib/format";
 import { PageLoader } from "@/components/Spinner";
 import { EmptyState } from "@/components/EmptyState";
 import { Pagination } from "./Users";
+import { PageHeader } from "@/components/StatCard";
 
 export default function Gifts() {
   const [page, setPage] = useState(1);
@@ -13,11 +14,16 @@ export default function Gifts() {
   const pages = list.data ? Math.max(1, Math.ceil(list.data.total / list.data.limit)) : 1;
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">Гифты</h1>
-        {list.data && <span className="text-sm text-fg-muted">{fmtNum(list.data.total)} всего</span>}
-      </div>
+    <div className="stagger-children space-y-5">
+      <PageHeader
+        title="Гифты"
+        subtitle="Подаренные подписки и их активация."
+        actions={
+          list.data ? (
+            <span className="text-sm text-fg-muted">{fmtNum(list.data.total)} всего</span>
+          ) : undefined
+        }
+      />
 
       <div className="card overflow-hidden">
         {list.isLoading ? <PageLoader /> :

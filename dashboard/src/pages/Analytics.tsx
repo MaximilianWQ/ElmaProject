@@ -7,7 +7,7 @@ import {
 import { TrendingUp, Clock, PieChart as PieIcon, Layers } from "lucide-react";
 import { endpoints, type DailyPoint } from "@/lib/api";
 import { fmtRub, fmtNum, fmtCompactInt, fmtPct, dayLabel } from "@/lib/format";
-import { StatCard } from "@/components/StatCard";
+import { StatCard, PageHeader } from "@/components/StatCard";
 import { cn } from "@/lib/cn";
 
 const DAY_OPTIONS = [7, 30, 90, 180] as const;
@@ -68,10 +68,10 @@ export default function Analytics() {
 
   return (
     <div className="stagger-children space-y-6">
-      <div>
-        <div className="label">Аналитика</div>
-        <h1 className="text-2xl font-bold tracking-tight">Аналитика ELMA</h1>
-      </div>
+      <PageHeader
+        title="Аналитика ELMA"
+        subtitle="Динамика по дням и часам, провайдеры и разбивка по тарифам."
+      />
 
       {/* Range totals */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">

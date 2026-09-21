@@ -1,16 +1,22 @@
-import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Fingerprint, Globe, KeyRound, LogOut, Plus, Trash2, Bell, BellOff, ShieldAlert } from "lucide-react";
-import { endpoints, ApiError } from "@/lib/api";
+import { Link } from "react-router-dom";
+import {
+  Bell, BellOff, Fingerprint, KeyRound, LogOut, Plus, Trash2, Wrench,
+} from "lucide-react";
+import { ApiError, endpoints } from "@/lib/api";
 import { fmtDate, fmtNum } from "@/lib/format";
 import { logout } from "@/lib/auth";
 import { registerPasskey } from "@/lib/passkey";
-import { enablePush, disablePush, pushSubscribed, pushSupported } from "@/lib/push";
-import { useEventStream } from "@/lib/ws";
+import { disablePush, enablePush, pushSubscribed, pushSupported } from "@/lib/push";
 import { PageLoader, Spinner } from "@/components/Spinner";
 import { ConfirmButton } from "@/components/ConfirmButton";
+import { PageHeader } from "@/components/StatCard";
 import { toast } from "@/store/toast";
 
+/**
+ * What the service *is*. Anything that runs an operation against live data
+ * (panel reconciliation, the bypass migration) lives on the Сервис page.
+ */
 export default function Settings() {
   const qc = useQueryClient();
   const s = useQuery({ queryKey: ["settings"], queryFn: endpoints.settings });
@@ -18,12 +24,19 @@ export default function Settings() {
 
   const addKey = useMutation({
     mutationFn: () => registerPasskey("Passkey"),
-    onSuccess: () => { toast.success("Passkey добавлен"); qc.invalidateQueries({ queryKey: ["settings"] }); qc.invalidateQueries({ queryKey: ["passkey-available"] }); },
+    onSuccess: () => {
+      toast.success("Passkey добавлен");
+      qc.invalidateQueries({ queryKey: ["settings"] });
+      qc.invalidateQueries({ queryKey: ["passkey-available"] });
+    },
     onError: (e) => toast.error(e instanceof ApiError ? e.detail : "Не удалось добавить ключ"),
   });
   const delKey = useMutation({
     mutationFn: (id: string) => endpoints.passkeyDelete(id),
-    onSuccess: () => { toast.success("Ключ удалён"); qc.invalidateQueries({ queryKey: ["settings"] }); },
+    onSuccess: () => {
+      toast.success("Ключ удалён");
+      qc.invalidateQueries({ queryKey: ["settings"] });
+    },
     onError: () => toast.error("Не удалось удалить"),
   });
 
@@ -31,8 +44,16 @@ export default function Settings() {
   const d = s.data;
 
   return (
-    <div className="max-w-2xl space-y-5">
-      <h1 className="text-2xl font-bold tracking-tight">Настройки</h1>
+    <div className="stagger-children max-w-2xl space-y-5">
+      <PageHeader
+        title="Настройки"
+        subtitle="Конфигурация бота, тарифы и ключи входа."
+        actions={
+          <Link to="/service" className="btn-secondary">
+            <Wrench className="h-4 w-4" /> Сервис
+          </Link>
+        }
+      />
 
       <div className="card card-pad space-y-3">
         <div className="label">Сервис</div>
@@ -44,18 +65,23 @@ export default function Settings() {
       </div>
 
       <PushCard />
-      <ReconCard />
 
       <div className="card card-pad">
-        <div className="label mb-2">Тарифы</div>
+        <div className="label mb-2">Тарифы · Premium</div>
         <div className="divide-y divide-border-subtle text-sm">
           {d.tariffs.map((t) => (
-            <div key={t.code} className="flex justify-between py-2">
+            <div key={t.code} className="flex items-center justify-between gap-3 py-2">
               <span className="font-medium">{t.title}</span>
-              <span className="text-fg-muted">{fmtNum(t.price_rub)} ₽ · {t.days} дн.{t.save_label ? ` · ${t.save_label}` : ""}</span>
+              <span className="text-fg-muted">
+                {fmtNum(t.price_rub)} ₽ · {t.days} дн.
+                {t.save_label ? <span className="ml-1 text-success">{t.save_label}</span> : null}
+              </span>
             </div>
           ))}
         </div>
+        <p className="mt-2 text-xs text-fg-subtle">
+          Один план в четырёх периодах. Пакеты ГБ обхода продаются отдельно.
+        </p>
       </div>
 
       <div className="card card-pad">
@@ -65,8 +91,13 @@ export default function Settings() {
             <div className="label">Passkey / WebAuthn</div>
           </div>
           {pk.data?.available && (
-            <button className="btn-info px-3 py-1.5 text-xs" disabled={addKey.isPending} onClick={() => addKey.mutate()}>
-              {addKey.isPending ? <Spinner className="h-4 w-4 text-white" /> : <Plus className="h-4 w-4" />} Добавить
+            <button
+              className="btn-info px-3 py-1.5 text-xs"
+              disabled={addKey.isPending}
+              onClick={() => addKey.mutate()}
+            >
+              {addKey.isPending ? <Spinner className="h-4 w-4 text-white" /> : <Plus className="h-4 w-4" />}
+              Добавить
             </button>
           )}
         </div>
@@ -89,8 +120,11 @@ export default function Settings() {
                   <div className="text-xs text-fg-subtle">добавлен {fmtDate(p.created_at)}</div>
                 </div>
                 <ConfirmButton
-                  variant="secondary" className="px-2 text-danger" icon={Trash2}
-                  idleLabel="" confirmLabel="Удалить?"
+                  variant="secondary"
+                  className="px-2 text-danger"
+                  icon={Trash2}
+                  idleLabel=""
+                  confirmLabel="Удалить?"
                   pending={delKey.isPending && delKey.variables === p.credential_id}
                   onConfirm={() => delKey.mutate(p.credential_id)}
                 />
@@ -100,8 +134,6 @@ export default function Settings() {
         )}
       </div>
 
-      <BypassBackfill />
-
       <button onClick={logout} className="btn-secondary w-full">
         <LogOut className="h-4 w-4" /> Выйти из консоли
       </button>
@@ -109,99 +141,29 @@ export default function Settings() {
   );
 }
 
-function BypassBackfill() {
-  const [gb, setGb] = useState(50);
-  const prev = useQuery({
-    queryKey: ["bypass", "backfill"], queryFn: endpoints.bypassPreview, refetchInterval: 30_000,
-  });
-  const events = useEventStream().filter((e) => e.type.startsWith("bypass_backfill"));
-  const last = events[0];
-
-  const run = useMutation({
-    mutationFn: () => endpoints.bypassBackfill(gb),
-    onSuccess: (r) => toast.success(`Запущено для ${fmtNum(r.total)} пользователей`),
-    onError: (e) => toast.error(e instanceof ApiError ? e.detail : "Ошибка"),
-  });
-
-  if (prev.data && !prev.data.enabled) {
-    return (
-      <div className="card card-pad">
-        <div className="mb-1 flex items-center gap-2">
-          <Globe className="h-4 w-4 text-fg-subtle" />
-          <div className="label">Миграция Bypass</div>
-        </div>
-        <p className="text-sm text-fg-muted">
-          Bypass выключен. Задайте <span className="font-mono">REMNAWAVE_BYPASS_SQUAD_UUID</span>,
-          чтобы включить.
-        </p>
-      </div>
-    );
-  }
-
-  const eligible = prev.data?.eligible ?? 0;
-  const running = (prev.data?.running ?? false) || (!!last && last.type !== "bypass_backfill:done");
-  const done = Number(last?.done ?? 0);
-  const total = Number(last?.total ?? 0);
-  const ok = Number(last?.ok ?? 0);
-  const failed = Number(last?.failed ?? 0);
-
-  return (
-    <div className="card card-pad space-y-3">
-      <div className="flex items-center gap-2">
-        <Globe className="h-4 w-4 text-fg-subtle" />
-        <div className="label">Миграция Bypass</div>
-      </div>
-      <p className="text-sm text-fg-muted">
-        Создаст bypass-профиль в нужном сквоте для всех активных платных подписчиков,
-        у кого его ещё нет. Идемпотентно (повторно не дублирует), с троттлингом панели,
-        фоном с прогрессом.
-      </p>
-
-      <div className="flex items-center justify-between rounded-xl bg-bg-elevated px-3 py-2 text-sm">
-        <span className="text-fg-muted">Подходит сейчас</span>
-        <span className="font-semibold">{fmtNum(eligible)}</span>
-      </div>
-
-      <div className="flex items-center gap-2">
-        <input type="number" min={1} className="input w-28" value={gb}
-          onChange={(e) => setGb(Math.max(1, Number(e.target.value)))} />
-        <span className="text-sm text-fg-muted">ГБ начислить каждому</span>
-      </div>
-
-      {last && (
-        <div className="rounded-xl bg-bg-elevated px-3 py-2 text-sm">
-          <div className="flex justify-between">
-            <span className="text-fg-muted">
-              {last.type === "bypass_backfill:done" ? "Готово" : "Идёт миграция…"}
-            </span>
-            <span className="font-medium">{fmtNum(done)} / {fmtNum(total)}</span>
-          </div>
-          <div className="mt-1 text-xs text-fg-subtle">✓ {fmtNum(ok)} · ⚠ {fmtNum(failed)}</div>
-        </div>
-      )}
-
-      <ConfirmButton
-        className="w-full" variant="info" icon={Globe}
-        idleLabel={`Создать bypass всем (${fmtNum(eligible)})`}
-        confirmLabel={`Точно запустить для ${fmtNum(eligible)}?`}
-        pending={run.isPending || running} disabled={eligible === 0}
-        onConfirm={() => run.mutate()}
-      />
-    </div>
-  );
-}
-
 function PushCard() {
   const key = useQuery({ queryKey: ["push", "key"], queryFn: endpoints.pushKey });
-  const sub = useQuery({ queryKey: ["push", "subscribed"], queryFn: pushSubscribed, enabled: pushSupported() });
+  const sub = useQuery({
+    queryKey: ["push", "subscribed"],
+    queryFn: pushSubscribed,
+    enabled: pushSupported(),
+  });
   const on = useMutation({
     mutationFn: () => enablePush(),
-    onSuccess: () => { toast.success("Push включён на этом устройстве"); sub.refetch(); key.refetch(); },
+    onSuccess: () => {
+      toast.success("Push включён на этом устройстве");
+      sub.refetch();
+      key.refetch();
+    },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Ошибка"),
   });
   const off = useMutation({
     mutationFn: () => disablePush(),
-    onSuccess: () => { toast.success("Push выключён"); sub.refetch(); key.refetch(); },
+    onSuccess: () => {
+      toast.success("Push выключён");
+      sub.refetch();
+      key.refetch();
+    },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Ошибка"),
   });
 
@@ -222,57 +184,22 @@ function PushCard() {
         <div className="text-xs text-fg-muted">Браузер не поддерживает push.</div>
       ) : serverOff ? (
         <div className="text-xs text-fg-muted">
-          Выключено на сервере — задайте <code>VAPID_PUBLIC_KEY</code> / <code>VAPID_PRIVATE_KEY</code>.
+          Выключено на сервере — задайте <code>VAPID_PUBLIC_KEY</code> /{" "}
+          <code>VAPID_PRIVATE_KEY</code>.
         </div>
       ) : isSub ? (
         <button className="btn-secondary" disabled={off.isPending} onClick={() => off.mutate()}>
-          {off.isPending ? <Spinner className="h-4 w-4" /> : <BellOff className="h-4 w-4" />} Выключить на этом устройстве
+          {off.isPending ? <Spinner className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
+          Выключить на этом устройстве
         </button>
       ) : (
         <button className="btn-primary" disabled={on.isPending} onClick={() => on.mutate()}>
-          {on.isPending ? <Spinner className="h-4 w-4" /> : <Bell className="h-4 w-4" />} Включить на этом устройстве
+          {on.isPending ? <Spinner className="h-4 w-4" /> : <Bell className="h-4 w-4" />}
+          Включить на этом устройстве
         </button>
       )}
-      {key.data?.enabled && <div className="text-xs text-fg-subtle">Активных подписок: {fmtNum(key.data.count)}</div>}
-    </div>
-  );
-}
-
-function ReconCard() {
-  const [run, setRun] = useState(false);
-  const q = useQuery({
-    queryKey: ["reconcile"], queryFn: () => endpoints.reconcile(100),
-    enabled: run, refetchOnWindowFocus: false, staleTime: Infinity,
-  });
-  const cands = q.data?.candidates ?? [];
-  return (
-    <div className="card card-pad space-y-3">
-      <div className="flex items-center gap-2"><ShieldAlert className="h-4 w-4 text-fg-subtle" /><div className="label">Сверка выдачи (панель ↔ БД)</div></div>
-      <p className="text-sm text-fg-muted">
-        Сравнивает срок в Remnawave со сроком в базе и находит перевыдачу (панель &gt; БД ≥ 1 дня)
-        или отсутствие пользователя в панели. Проверяет до 100 активных платных подписок — идёт несколько секунд.
-      </p>
-      <button className="btn-secondary" disabled={q.isFetching}
-        onClick={() => { setRun(true); q.refetch(); }}>
-        {q.isFetching ? <Spinner className="h-4 w-4" /> : <ShieldAlert className="h-4 w-4" />} Проверить
-      </button>
-      {q.data && (
-        <div className="text-sm">
-          <div className="text-fg-muted">Проверено: {fmtNum(q.data.scanned)} · расхождений: <b>{fmtNum(cands.length)}</b></div>
-          {cands.length > 0 && (
-            <div className="mt-2 divide-y divide-border-subtle">
-              {cands.slice(0, 50).map((c) => (
-                <div key={c.telegram_id} className="flex items-center justify-between py-1.5">
-                  <code className="text-xs">{c.telegram_id}</code>
-                  <span className={c.issue === "no_panel" ? "badge-warning" : "badge-danger"}>
-                    {c.issue === "no_panel" ? "нет в панели" : `перевыдача +${c.days_over} дн.`}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-          {cands.length === 0 && <div className="mt-1 text-success">✓ Расхождений не найдено</div>}
-        </div>
+      {key.data?.enabled && (
+        <div className="text-xs text-fg-subtle">Активных подписок: {fmtNum(key.data.count)}</div>
       )}
     </div>
   );

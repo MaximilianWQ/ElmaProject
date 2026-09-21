@@ -7,6 +7,7 @@ import { PageLoader } from "@/components/Spinner";
 import { EmptyState } from "@/components/EmptyState";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { toast } from "@/store/toast";
+import { PageHeader } from "@/components/StatCard";
 
 const PAY_STATUS: Record<string, string> = {
   paid: "badge-success", failed: "badge-danger", pending: "badge-warning", refunded: "badge-muted",
@@ -35,11 +36,16 @@ export default function Users() {
   const pages = list.data ? Math.max(1, Math.ceil(list.data.total / list.data.limit)) : 1;
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold tracking-tight">Пользователи</h1>
-        {list.data && <span className="text-sm text-fg-muted">{fmtNum(list.data.total)} всего</span>}
-      </div>
+    <div className="stagger-children space-y-5">
+      <PageHeader
+        title="Пользователи"
+        subtitle="Поиск, выдача доступа, скидки и перевыпуск ключа."
+        actions={
+          list.data ? (
+            <span className="text-sm text-fg-muted">{fmtNum(list.data.total)} всего</span>
+          ) : undefined
+        }
+      />
 
       <div className="relative">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-subtle" />

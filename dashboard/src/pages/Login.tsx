@@ -45,8 +45,8 @@ export default function Login({ onDone }: { onDone: () => void }) {
   return (
     <div className="relative grid min-h-screen place-items-center overflow-hidden bg-bg px-5">
       {/* aurora */}
-      <div className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-accent/25 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-24 -right-16 h-72 w-72 rounded-full bg-secondary/25 blur-3xl" />
+      <div className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-info/20 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-24 -right-16 h-72 w-72 rounded-full bg-special/20 blur-3xl" />
       <div className="pointer-events-none absolute left-1/3 top-1/2 h-64 w-64 rounded-full bg-violet-400/20 blur-3xl" />
 
       <form

@@ -12,6 +12,7 @@ import { PageLoader, Spinner } from "@/components/Spinner";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { cn } from "@/lib/cn";
 import { toast } from "@/store/toast";
+import { PageHeader } from "@/components/StatCard";
 
 const GROUPS = ["База", "Онбординг", "Триал-воронка", "Продление", "Возврат", "Апселл", "Источник"] as const;
 function groupOf(key: string): (typeof GROUPS)[number] {
@@ -48,11 +49,16 @@ export default function Broadcasts() {
   const events = useEventStream().filter((e) => e.type.startsWith("broadcast"));
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold tracking-tight">Рассылки</h1>
-        <Link to="/broadcasts/new" className="btn-primary"><Radio className="h-4 w-4" /> Новая</Link>
-      </div>
+    <div className="stagger-children space-y-5">
+      <PageHeader
+        title="Рассылки"
+        subtitle="История отправок и расписание."
+        actions={
+          <Link to="/broadcasts/new" className="btn-primary">
+            <Radio className="h-4 w-4" /> Новая
+          </Link>
+        }
+      />
 
       {events.length > 0 && (
         <div className="card card-pad">

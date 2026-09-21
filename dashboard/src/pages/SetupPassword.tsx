@@ -42,8 +42,8 @@ export default function SetupPassword({ onDone }: { onDone: () => void }) {
 
   return (
     <div className="relative grid min-h-screen place-items-center overflow-hidden bg-bg px-5">
-      <div className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-accent/25 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-24 -right-16 h-72 w-72 rounded-full bg-secondary/25 blur-3xl" />
+      <div className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-info/20 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-24 -right-16 h-72 w-72 rounded-full bg-special/20 blur-3xl" />
 
       <div className="relative w-full max-w-sm rounded-2xl border border-white/50 bg-white/80 p-7 shadow-soft backdrop-blur-2xl animate-fade-up">
         <div className="mb-6 flex flex-col items-center text-center">

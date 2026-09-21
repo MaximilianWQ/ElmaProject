@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { cn } from "@/lib/cn";
 import { toast } from "@/store/toast";
+import { PageHeader } from "@/components/StatCard";
 
 function rewardText(p: PromoRow): string {
   return p.kind === "days"
@@ -32,11 +33,16 @@ export default function PromoCodes() {
   });
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold tracking-tight">Промокоды</h1>
-        {list.data && <span className="text-sm text-fg-muted">{fmtNum(list.data.length)} шт.</span>}
-      </div>
+    <div className="stagger-children space-y-5">
+      <PageHeader
+        title="Промокоды"
+        subtitle="Скидки и бонусные дни по коду."
+        actions={
+          list.data ? (
+            <span className="text-sm text-fg-muted">{fmtNum(list.data.length)} шт.</span>
+          ) : undefined
+        }
+      />
 
       <CreateForm onCreated={refresh} />
 

@@ -11,6 +11,7 @@ import { Spinner } from "@/components/Spinner";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { cn } from "@/lib/cn";
 import { toast } from "@/store/toast";
+import { PageHeader } from "@/components/StatCard";
 
 const WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
 const PRESETS = [
@@ -169,7 +170,7 @@ export default function BroadcastCreate() {
   return (
     <div className="mx-auto max-w-2xl space-y-5">
       <button onClick={() => navigate(-1)} className="btn-ghost px-2 text-sm"><ArrowLeft className="h-4 w-4" /> Назад</button>
-      <h1 className="text-2xl font-bold tracking-tight">{cloneId ? "Копия рассылки" : "Новая рассылка"}</h1>
+      <PageHeader title={cloneId ? "Копия рассылки" : "Новая рассылка"} />
       {cloneId && (
         <div className="rounded-xl bg-bg-elevated px-3 py-2 text-xs text-fg-muted">
           📋 Текст, фото и кнопка скопированы из рассылки #{cloneId}. <b>Сегмент выберите заново</b>, чтобы не отправить той же аудитории.

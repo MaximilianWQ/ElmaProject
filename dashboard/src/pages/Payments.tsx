@@ -6,6 +6,7 @@ import { fmtDateTime, fmtNum, fmtRub } from "@/lib/format";
 import { PageLoader } from "@/components/Spinner";
 import { EmptyState } from "@/components/EmptyState";
 import { Pagination } from "./Users";
+import { PageHeader } from "@/components/StatCard";
 
 const STATUS: Record<string, string> = {
   paid: "badge-success", failed: "badge-danger", pending: "badge-warning", refunded: "badge-muted",
@@ -21,8 +22,8 @@ export default function Payments() {
   const pages = list.data ? Math.max(1, Math.ceil(list.data.total / list.data.limit)) : 1;
 
   return (
-    <div className="space-y-5">
-      <h1 className="text-2xl font-bold tracking-tight">Платежи</h1>
+    <div className="stagger-children space-y-5">
+      <PageHeader title="Платежи" subtitle="История оплат по всем провайдерам." />
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {(prov.data ?? []).map((p) => (

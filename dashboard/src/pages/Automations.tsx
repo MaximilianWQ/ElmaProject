@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Zap, Power, Trash2, Pencil, Save, RotateCcw } from "lucide-react";
+import { Power, Trash2, Pencil, Save, RotateCcw } from "lucide-react";
 import {
   endpoints, ApiError,
   type BuiltinAutomation, type CustomAutomation, type AutomationCreate,
@@ -10,6 +10,7 @@ import { PageLoader, Spinner } from "@/components/Spinner";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { cn } from "@/lib/cn";
 import { toast } from "@/store/toast";
+import { PageHeader } from "@/components/StatCard";
 
 const TRIGGERS = [
   { key: "after_signup", label: "После регистрации", verb: "через" },
@@ -41,11 +42,11 @@ const TABS = [
 export default function Automations() {
   const [tab, setTab] = useState<"builtin" | "custom" | "help">("builtin");
   return (
-    <div className="space-y-5">
-      <div className="flex items-center gap-2">
-        <Zap className="h-5 w-5 text-accent" />
-        <h1 className="text-2xl font-bold tracking-tight">Автоматические рассылки</h1>
-      </div>
+    <div className="stagger-children space-y-5">
+      <PageHeader
+        title="Автоматические рассылки"
+        subtitle="Сообщения, которые бот отправляет сам по событиям."
+      />
       <p className="text-sm text-fg-muted">
         Сообщения, которые бот отправляет сам по событиям (триал, продление, уход клиента).
         Встроенные можно отредактировать или выключить; свои — создать под любой триггер.

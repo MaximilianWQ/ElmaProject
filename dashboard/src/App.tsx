@@ -18,6 +18,7 @@ import PromoCodes from "./pages/PromoCodes";
 import MarketingLinks from "./pages/MarketingLinks";
 import Automations from "./pages/Automations";
 import Audit from "./pages/Audit";
+import Service from "./pages/Service";
 import Settings from "./pages/Settings";
 
 export default function App() {
@@ -51,6 +52,7 @@ export default function App() {
             <Route path="promo" element={<PromoCodes />} />
             <Route path="links" element={<MarketingLinks />} />
             <Route path="automations" element={<Automations />} />
+            <Route path="service" element={<Service />} />
             <Route path="audit" element={<Audit />} />
             <Route path="settings" element={<Settings />} />
             <Route path="*" element={<Navigate to="/" replace />} />
